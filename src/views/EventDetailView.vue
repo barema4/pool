@@ -382,9 +382,9 @@ const outlineButtonClass =
             :key="cat.id"
             class="rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm"
           >
-            <div class="flex items-center justify-between">
-              <div class="flex-1">
-                <p class="font-medium text-slate-900">{{ cat.name }}</p>
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div class="min-w-0 flex-1">
+                <p class="truncate font-medium text-slate-900">{{ cat.name }}</p>
                 <p class="text-xs text-slate-500">
                   {{ formatMoney(cat.allocatedFunds) }} allocated of {{ formatMoney(cat.estimatedCost) }} estimated
                 </p>
@@ -395,7 +395,7 @@ const outlineButtonClass =
                   />
                 </div>
               </div>
-              <button type="button" :class="outlineButtonClass" @click="openAllocate(cat.id)">
+              <button type="button" :class="[outlineButtonClass, 'shrink-0']" @click="openAllocate(cat.id)">
                 {{ allocatingCategoryId === cat.id ? 'Cancel' : 'Allocate' }}
               </button>
             </div>
@@ -475,9 +475,9 @@ const outlineButtonClass =
         </div>
         <ul v-else class="space-y-2">
           <li v-for="inv in store.invoices" :key="inv.id" class="rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm">
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="font-medium text-slate-900">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div class="min-w-0">
+                <p class="truncate font-medium text-slate-900">
                   {{ inv.contributorName ?? 'Open link' }}
                   <span class="ml-1 text-xs font-normal text-slate-400">({{ inv.source }})</span>
                 </p>
@@ -486,7 +486,7 @@ const outlineButtonClass =
                   <span v-if="inv.amountRequested"> of {{ formatMoney(inv.amountRequested) }}</span>
                 </p>
               </div>
-              <div class="flex items-center gap-2">
+              <div class="flex shrink-0 items-center gap-2">
                 <span class="rounded-full px-2.5 py-1 text-xs font-medium" :class="statusBadgeClass(inv.status)">{{
                   inv.status
                 }}</span>

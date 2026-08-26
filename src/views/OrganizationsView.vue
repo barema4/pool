@@ -99,21 +99,21 @@ async function handleCreate() {
       <p class="mt-1 text-sm text-slate-500">Create one to start pooling contributions.</p>
     </div>
     <ul v-else class="grid gap-3 sm:grid-cols-2">
-      <li v-for="org in store.organizations" :key="org.id">
+      <li v-for="org in store.organizations" :key="org.id" class="min-w-0">
         <RouterLink
           :to="{ name: 'organization-detail', params: { organizationId: org.id } }"
           class="flex items-center justify-between rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-babyblue-300 hover:shadow-md"
         >
-          <div class="flex items-center gap-3">
-            <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-babyblue-50 text-lg">
+          <div class="flex min-w-0 items-center gap-3">
+            <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-babyblue-50 text-lg">
               {{ orgTypeEmoji[org.type] }}
             </span>
-            <div>
-              <p class="font-medium text-slate-900">{{ org.name }}</p>
-              <p class="text-xs text-slate-500">{{ org.type }}</p>
+            <div class="min-w-0">
+              <p class="truncate font-medium text-slate-900">{{ org.name }}</p>
+              <p class="truncate text-xs text-slate-500">{{ org.type }}</p>
             </div>
           </div>
-          <span class="rounded-full bg-babyblue-100 px-2.5 py-1 text-xs font-medium text-babyblue-700">
+          <span class="ml-2 shrink-0 rounded-full bg-babyblue-100 px-2.5 py-1 text-xs font-medium text-babyblue-700">
             {{ org.role }}
           </span>
         </RouterLink>

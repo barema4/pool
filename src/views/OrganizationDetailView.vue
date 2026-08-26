@@ -234,25 +234,27 @@ async function handleCreateEvent() {
           No events yet.
         </div>
         <ul v-else class="grid gap-3 sm:grid-cols-2">
-          <li v-for="evt in events" :key="evt.id">
+          <li v-for="evt in events" :key="evt.id" class="min-w-0">
             <RouterLink
               :to="{ name: 'event-detail', params: { eventId: evt.id } }"
               class="flex items-center justify-between rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-babyblue-300 hover:shadow-md"
             >
-              <div class="flex items-center gap-3">
-                <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-babyblue-50 text-lg">
+              <div class="flex min-w-0 items-center gap-3">
+                <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-babyblue-50 text-lg">
                   {{ evt.isPermanent ? '🔁' : '🎉' }}
                 </span>
-                <div>
-                  <p class="font-medium text-slate-900">{{ evt.title }}</p>
+                <div class="min-w-0">
+                  <p class="truncate font-medium text-slate-900">{{ evt.title }}</p>
                   <p class="text-xs text-slate-500">
                     {{ evt.isPermanent ? 'Permanent' : 'Milestone' }}
                   </p>
                 </div>
               </div>
-              <span class="rounded-full px-2.5 py-1 text-xs font-medium" :class="statusBadgeClass(evt.status)">{{
-                evt.status
-              }}</span>
+              <span
+                class="ml-2 shrink-0 rounded-full px-2.5 py-1 text-xs font-medium"
+                :class="statusBadgeClass(evt.status)"
+                >{{ evt.status }}</span
+              >
             </RouterLink>
           </li>
         </ul>
