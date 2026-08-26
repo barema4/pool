@@ -21,6 +21,11 @@ const router = createRouter({
       name: 'public-contributors',
       component: () => import('@/views/ContributorsView.vue'),
     },
+    {
+      path: '/i/:token',
+      name: 'personal-invoice-pay',
+      component: () => import('@/views/PersonalInvoicePayView.vue'),
+    },
 
     // Authenticated dashboard.
     {
@@ -39,6 +44,12 @@ const router = createRouter({
       path: '/app/events/:eventId',
       name: 'event-detail',
       component: () => import('@/views/EventDetailView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/app/personal-invoices',
+      name: 'personal-invoices',
+      component: () => import('@/views/PersonalInvoicesView.vue'),
       meta: { requiresAuth: true },
     },
 

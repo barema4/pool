@@ -32,6 +32,7 @@ const STATUS_STYLES: Record<string, string> = {
   FAILED: 'bg-red-100 text-red-700',
   CLOSED: 'bg-slate-100 text-slate-600',
   ARCHIVED: 'bg-slate-100 text-slate-600',
+  CANCELLED: 'bg-slate-100 text-slate-600',
 }
 
 export function statusBadgeClass(status: string): string {

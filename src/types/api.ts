@@ -9,11 +9,17 @@ export type InvoiceStatus = 'PENDING' | 'PARTIALLY_PAID' | 'PAID' | 'EXPIRED'
 export type InvoiceSource = 'ORGANIZER' | 'PUBLIC_PLEDGE'
 export type PaymentRail = 'MOBILE_MONEY' | 'CARD'
 export type TransactionStatus = 'PENDING' | 'SUCCESS' | 'FAILED'
+export type PersonalInvoiceStatus = 'PENDING' | 'PAID' | 'EXPIRED' | 'CANCELLED'
 
 export interface AuthUser {
   id: string
   email: string
   name: string
+}
+
+export interface UserProfile extends AuthUser {
+  gatewayWalletId: string | null
+  createdAt: string
 }
 
 export interface TokenPair {
@@ -147,6 +153,26 @@ export interface Receipt {
   event: { id: string; title: string }
   organization: { name: string } | null
   invoiceRemainingBalance: number | null
+}
+
+export interface PersonalInvoice {
+  id: string
+  issuerId: string
+  recipientName: string
+  recipientEmail: string | null
+  recipientPhone: string | null
+  description: string | null
+  amount: string
+  amountPaid: string
+  secureToken: string
+  status: PersonalInvoiceStatus
+  expiresAt: string | null
+  paidAt: string | null
+  createdAt: string
+}
+
+export interface PublicPersonalInvoiceView extends PersonalInvoice {
+  issuer: { id: string; name: string }
 }
 
 export interface ApiErrorBody {
