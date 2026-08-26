@@ -34,9 +34,19 @@ async function handleSubmit() {
 </script>
 
 <template>
-  <div class="flex min-h-screen items-center justify-center bg-slate-50 px-4">
-    <div class="w-full max-w-sm rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-      <h1 class="mb-6 text-xl font-semibold text-slate-900">Log in to OpenPool</h1>
+  <div
+    class="flex min-h-screen items-center justify-center bg-gradient-to-br from-babyblue-50 via-white to-babyblue-100 px-4"
+  >
+    <div class="w-full max-w-sm rounded-2xl border border-babyblue-100 bg-white p-8 shadow-lg shadow-babyblue-100">
+      <div class="mb-6 flex flex-col items-center text-center">
+        <span
+          class="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-babyblue-500 text-lg font-bold text-white shadow-sm"
+        >
+          OP
+        </span>
+        <h1 class="text-xl font-semibold text-slate-900">Welcome back</h1>
+        <p class="mt-1 text-sm text-slate-500">Log in to your OpenPool account</p>
+      </div>
       <form class="space-y-4" @submit.prevent="handleSubmit">
         <div>
           <label class="mb-1 block text-sm font-medium text-slate-700">Email</label>
@@ -44,7 +54,7 @@ async function handleSubmit() {
             v-model="email"
             type="email"
             required
-            class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+            class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm text-slate-900 transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none"
           />
         </div>
         <div>
@@ -53,21 +63,21 @@ async function handleSubmit() {
             v-model="password"
             type="password"
             required
-            class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+            class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm text-slate-900 transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none"
           />
         </div>
-        <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
+        <p v-if="error" class="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{{ error }}</p>
         <button
           type="submit"
           :disabled="loading"
-          class="w-full rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+          class="w-full rounded-lg bg-babyblue-600 px-3 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-babyblue-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {{ loading ? 'Logging in…' : 'Log in' }}
         </button>
       </form>
-      <p class="mt-4 text-center text-sm text-slate-600">
+      <p class="mt-6 text-center text-sm text-slate-500">
         No account?
-        <RouterLink :to="{ name: 'register' }" class="font-medium text-slate-900 underline"
+        <RouterLink :to="{ name: 'register' }" class="font-medium text-babyblue-600 hover:text-babyblue-700"
           >Register</RouterLink
         >
       </p>

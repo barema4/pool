@@ -6,7 +6,7 @@ import { useEventStore } from '@/stores/event'
 import * as budgetCategoriesApi from '@/api/budgetCategories'
 import * as invoicesApi from '@/api/invoices'
 import { extractErrorMessage } from '@/api/client'
-import { formatMoney, formatDate, copyToClipboard } from '@/lib/format'
+import { formatMoney, formatDate, copyToClipboard, statusBadgeClass } from '@/lib/format'
 import type { EventStatus, ShareLinks, ContributorSummary } from '@/types/api'
 
 const route = useRoute()
@@ -15,15 +15,27 @@ const store = useEventStore()
 
 type Tab = 'overview' | 'budget' | 'invoices' | 'transactions' | 'contributors'
 const activeTab = ref<Tab>('overview')
-const tabs: { key: Tab; label: string }[] = [
-  { key: 'overview', label: 'Overview' },
-  { key: 'budget', label: 'Budget Categories' },
-  { key: 'invoices', label: 'Invoices' },
-  { key: 'transactions', label: 'Transactions' },
-  { key: 'contributors', label: 'Contributors' },
+const tabs: { key: Tab; label: string; icon: string }[] = [
+  { key: 'overview', label: 'Overview', icon: '📋' },
+  { key: 'budget', label: 'Budget', icon: '💰' },
+  { key: 'invoices', label: 'Invoices', icon: '🧾' },
+  { key: 'transactions', label: 'Transactions', icon: '💳' },
+  { key: 'contributors', label: 'Contributors', icon: '👥' },
 ]
 
 const loadError = ref('')
+
+const totalReceived = computed(() =>
+  store.transactions
+    .filter((t) => t.status === 'SUCCESS')
+    .reduce((sum, t) => sum + Number(t.amountSettled), 0),
+)
+const goalProgressPct = computed(() => {
+  if (!store.event?.targetGoal) return null
+  const goal = Number(store.event.targetGoal)
+  if (goal <= 0) return null
+  return Math.min(100, Math.round((totalReceived.value / goal) * 100))
+})
 
 onMounted(async () => {
   try {
@@ -126,6 +138,12 @@ async function handleAllocate(categoryId: string) {
   } catch (err) {
     allocateError.value = extractErrorMessage(err)
   }
+}
+
+function categoryProgressPct(allocated: string, estimated: string): number {
+  const est = Number(estimated)
+  if (est <= 0) return 0
+  return Math.min(100, Math.round((Number(allocated) / est) * 100))
 }
 
 // --- Invoices ---
@@ -237,6 +255,13 @@ async function handleCopySummary() {
   copiedSummary.value = await copyToClipboard(contributorSummary.value.text)
   setTimeout(() => (copiedSummary.value = false), 2000)
 }
+
+const inputClass =
+  'w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none'
+const primaryButtonClass =
+  'rounded-lg bg-babyblue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-babyblue-700 disabled:cursor-not-allowed disabled:opacity-50'
+const outlineButtonClass =
+  'rounded-lg border border-babyblue-200 px-3 py-1.5 text-xs font-medium text-babyblue-700 transition-colors hover:bg-babyblue-100'
 </script>
 
 <template>
@@ -245,25 +270,49 @@ async function handleCopySummary() {
     <div v-else-if="loadError" class="text-sm text-red-600">{{ loadError }}</div>
 
     <template v-else-if="store.event">
-      <h1 class="mb-1 text-xl font-semibold text-slate-900">{{ store.event.title }}</h1>
-      <p class="mb-6 text-sm text-slate-500">
-        {{ store.event.isPermanent ? 'Permanent collection' : 'Milestone event' }} ·
-        {{ store.event.status }}
-      </p>
+      <!-- Header card -->
+      <div class="mb-6 rounded-2xl border border-babyblue-100 bg-white p-5 shadow-sm">
+        <div class="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 class="text-2xl font-semibold text-slate-900">{{ store.event.title }}</h1>
+            <p class="mt-1 text-sm text-slate-500">
+              {{ store.event.isPermanent ? '🔁 Permanent collection' : '🎉 Milestone event' }}
+            </p>
+          </div>
+          <span class="rounded-full px-3 py-1 text-xs font-semibold" :class="statusBadgeClass(store.event.status)">
+            {{ store.event.status }}
+          </span>
+        </div>
 
-      <div class="mb-6 flex gap-1 border-b border-slate-200">
+        <div v-if="goalProgressPct !== null" class="mt-4">
+          <div class="mb-1 flex justify-between text-xs text-slate-500">
+            <span>{{ formatMoney(totalReceived) }} raised of {{ formatMoney(store.event.targetGoal) }}</span>
+            <span class="font-medium text-babyblue-700">{{ goalProgressPct }}%</span>
+          </div>
+          <div class="h-2 w-full overflow-hidden rounded-full bg-babyblue-100">
+            <div
+              class="h-full rounded-full bg-babyblue-500 transition-all"
+              :style="{ width: `${goalProgressPct}%` }"
+            />
+          </div>
+        </div>
+      </div>
+
+      <!-- Segmented tab bar -->
+      <div class="mb-6 inline-flex flex-wrap gap-1 rounded-xl bg-babyblue-100/70 p-1">
         <button
           v-for="tab in tabs"
           :key="tab.key"
           type="button"
-          class="border-b-2 px-3 py-2 text-sm font-medium"
+          class="flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors"
           :class="
             activeTab === tab.key
-              ? 'border-slate-900 text-slate-900'
-              : 'border-transparent text-slate-500 hover:text-slate-700'
+              ? 'bg-white text-babyblue-700 shadow-sm'
+              : 'text-slate-500 hover:text-babyblue-700'
           "
           @click="selectTab(tab.key)"
         >
+          <span aria-hidden="true">{{ tab.icon }}</span>
           {{ tab.label }}
         </button>
       </div>
@@ -272,49 +321,31 @@ async function handleCopySummary() {
       <section v-if="activeTab === 'overview'" class="max-w-lg space-y-4">
         <div>
           <label class="mb-1 block text-sm font-medium text-slate-700">Title</label>
-          <input
-            v-model="title"
-            class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-          />
+          <input v-model="title" :class="inputClass" />
         </div>
         <div>
           <label class="mb-1 block text-sm font-medium text-slate-700">Description</label>
-          <textarea
-            v-model="description"
-            class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-          />
+          <textarea v-model="description" :class="inputClass" />
         </div>
         <div>
           <label class="mb-1 block text-sm font-medium text-slate-700">Cover image URL</label>
-          <input
-            v-model="coverImageUrl"
-            class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-          />
+          <input v-model="coverImageUrl" :class="inputClass" />
         </div>
         <div>
           <label class="mb-1 block text-sm font-medium text-slate-700">Target goal</label>
-          <input
-            v-model.number="targetGoal"
-            type="number"
-            step="0.01"
-            class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-          />
+          <input v-model.number="targetGoal" type="number" step="0.01" :class="inputClass" />
         </div>
-        <p v-if="overviewError" class="text-sm text-red-600">{{ overviewError }}</p>
-        <button
-          type="button"
-          :disabled="savingOverview"
-          class="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
-          @click="handleSaveOverview"
-        >
+        <p v-if="overviewError" class="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{{ overviewError }}</p>
+        <button type="button" :disabled="savingOverview" :class="primaryButtonClass" @click="handleSaveOverview">
           {{ savingOverview ? 'Saving…' : 'Save changes' }}
         </button>
 
-        <div class="pt-4">
+        <div class="border-t border-babyblue-100 pt-4">
           <label class="mb-1 block text-sm font-medium text-slate-700">Status</label>
           <select
             :value="store.event.status"
-            class="rounded-md border border-slate-300 px-3 py-2 text-sm"
+            :class="inputClass"
+            class="w-auto"
             @change="handleStatusChange(($event.target as HTMLSelectElement).value as EventStatus)"
           >
             <option v-for="s in statuses" :key="s" :value="s">{{ s }}</option>
@@ -324,74 +355,59 @@ async function handleCopySummary() {
 
       <!-- BUDGET CATEGORIES -->
       <section v-else-if="activeTab === 'budget'">
-        <form class="mb-4 flex flex-wrap items-end gap-2" @submit.prevent="handleCreateCategory">
+        <form class="mb-4 flex flex-wrap items-end gap-2 rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm" @submit.prevent="handleCreateCategory">
           <div>
             <label class="mb-1 block text-xs font-medium text-slate-700">Category name</label>
-            <input
-              v-model="newCategoryName"
-              required
-              class="rounded-md border border-slate-300 px-3 py-2 text-sm"
-            />
+            <input v-model="newCategoryName" required :class="inputClass" />
           </div>
           <div>
             <label class="mb-1 block text-xs font-medium text-slate-700">Estimated cost</label>
-            <input
-              v-model.number="newCategoryCost"
-              type="number"
-              step="0.01"
-              class="rounded-md border border-slate-300 px-3 py-2 text-sm"
-            />
+            <input v-model.number="newCategoryCost" type="number" step="0.01" :class="inputClass" />
           </div>
-          <button
-            type="submit"
-            :disabled="creatingCategory"
-            class="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
-          >
+          <button type="submit" :disabled="creatingCategory" :class="primaryButtonClass">
             {{ creatingCategory ? 'Adding…' : 'Add category' }}
           </button>
         </form>
-        <p v-if="categoryError" class="mb-3 text-sm text-red-600">{{ categoryError }}</p>
+        <p v-if="categoryError" class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{{ categoryError }}</p>
 
-        <div v-if="store.budgetCategories.length === 0" class="text-sm text-slate-500">
+        <div
+          v-if="store.budgetCategories.length === 0"
+          class="rounded-2xl border border-dashed border-babyblue-200 bg-white/60 p-8 text-center text-sm text-slate-500"
+        >
           No budget categories yet.
         </div>
         <ul v-else class="space-y-2">
           <li
             v-for="cat in store.budgetCategories"
             :key="cat.id"
-            class="rounded-lg border border-slate-200 bg-white p-4"
+            class="rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm"
           >
             <div class="flex items-center justify-between">
-              <div>
+              <div class="flex-1">
                 <p class="font-medium text-slate-900">{{ cat.name }}</p>
                 <p class="text-xs text-slate-500">
-                  {{ formatMoney(cat.allocatedFunds) }} allocated of
-                  {{ formatMoney(cat.estimatedCost) }} estimated
+                  {{ formatMoney(cat.allocatedFunds) }} allocated of {{ formatMoney(cat.estimatedCost) }} estimated
                 </p>
+                <div class="mt-2 h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-babyblue-100">
+                  <div
+                    class="h-full rounded-full bg-babyblue-500"
+                    :style="{ width: `${categoryProgressPct(cat.allocatedFunds, cat.estimatedCost)}%` }"
+                  />
+                </div>
               </div>
-              <button
-                type="button"
-                class="text-xs font-medium text-slate-600 underline"
-                @click="openAllocate(cat.id)"
-              >
-                {{ allocatingCategoryId === cat.id ? 'Cancel' : 'Allocate a transaction' }}
+              <button type="button" :class="outlineButtonClass" @click="openAllocate(cat.id)">
+                {{ allocatingCategoryId === cat.id ? 'Cancel' : 'Allocate' }}
               </button>
             </div>
 
             <form
               v-if="allocatingCategoryId === cat.id"
-              class="mt-3 flex flex-wrap items-end gap-2 border-t border-slate-100 pt-3"
+              class="mt-3 flex flex-wrap items-end gap-2 border-t border-babyblue-100 pt-3"
               @submit.prevent="handleAllocate(cat.id)"
             >
               <div>
-                <label class="mb-1 block text-xs font-medium text-slate-700"
-                  >Settled transaction</label
-                >
-                <select
-                  v-model="allocateTransactionId"
-                  required
-                  class="rounded-md border border-slate-300 px-3 py-2 text-sm"
-                >
+                <label class="mb-1 block text-xs font-medium text-slate-700">Settled transaction</label>
+                <select v-model="allocateTransactionId" required :class="inputClass">
                   <option value="" disabled>Select…</option>
                   <option v-for="t in successfulTransactions" :key="t.id" :value="t.id">
                     {{ t.providerReference }} — {{ formatMoney(t.amountSettled) }}
@@ -400,25 +416,11 @@ async function handleCopySummary() {
               </div>
               <div>
                 <label class="mb-1 block text-xs font-medium text-slate-700">Amount</label>
-                <input
-                  v-model.number="allocateAmount"
-                  type="number"
-                  step="0.01"
-                  required
-                  class="rounded-md border border-slate-300 px-3 py-2 text-sm"
-                />
+                <input v-model.number="allocateAmount" type="number" step="0.01" required :class="inputClass" />
               </div>
-              <button
-                type="submit"
-                class="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
-              >
-                Allocate
-              </button>
+              <button type="submit" :class="primaryButtonClass">Allocate</button>
             </form>
-            <p
-              v-if="allocatingCategoryId === cat.id && allocateError"
-              class="mt-2 text-sm text-red-600"
-            >
+            <p v-if="allocatingCategoryId === cat.id && allocateError" class="mt-2 text-sm text-red-600">
               {{ allocateError }}
             </p>
           </li>
@@ -428,74 +430,51 @@ async function handleCopySummary() {
       <!-- INVOICES -->
       <section v-else-if="activeTab === 'invoices'">
         <div class="mb-4 flex justify-end">
-          <button
-            type="button"
-            class="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
-            @click="showInvoiceForm = !showInvoiceForm"
-          >
-            {{ showInvoiceForm ? 'Cancel' : 'New invoice' }}
+          <button type="button" :class="primaryButtonClass" @click="showInvoiceForm = !showInvoiceForm">
+            {{ showInvoiceForm ? 'Cancel' : '+ New invoice' }}
           </button>
         </div>
 
         <form
           v-if="showInvoiceForm"
-          class="mb-4 space-y-2 rounded-lg border border-slate-200 bg-white p-4"
+          class="mb-4 space-y-2 rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm"
           @submit.prevent="handleCreateInvoice"
         >
-          <input
-            v-model="invContributorName"
-            placeholder="Contributor name (optional)"
-            class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-          />
+          <input v-model="invContributorName" placeholder="Contributor name (optional)" :class="inputClass" />
           <input
             v-model="invContributorEmail"
             type="email"
             placeholder="Contributor email (optional)"
-            class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+            :class="inputClass"
           />
-          <input
-            v-model="invContributorPhone"
-            placeholder="Contributor phone (optional)"
-            class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-          />
+          <input v-model="invContributorPhone" placeholder="Contributor phone (optional)" :class="inputClass" />
           <input
             v-model.number="invAmountRequested"
             type="number"
             step="0.01"
-            :placeholder="
-              invIsPermanent ? 'Amount (optional for permanent links)' : 'Amount requested'
-            "
+            :placeholder="invIsPermanent ? 'Amount (optional for permanent links)' : 'Amount requested'"
             :required="!invIsPermanent"
-            class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+            :class="inputClass"
           />
-          <input
-            v-model="invCategoryTag"
-            placeholder="Category tag (optional)"
-            class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-          />
+          <input v-model="invCategoryTag" placeholder="Category tag (optional)" :class="inputClass" />
           <label class="flex items-center gap-2 text-sm text-slate-700">
-            <input v-model="invIsPermanent" type="checkbox" />
+            <input v-model="invIsPermanent" type="checkbox" class="accent-babyblue-600" />
             Permanent link (reusable, no expiry)
           </label>
-          <p v-if="invoiceError" class="text-sm text-red-600">{{ invoiceError }}</p>
-          <button
-            type="submit"
-            :disabled="creatingInvoice"
-            class="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
-          >
+          <p v-if="invoiceError" class="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{{ invoiceError }}</p>
+          <button type="submit" :disabled="creatingInvoice" :class="primaryButtonClass">
             {{ creatingInvoice ? 'Creating…' : 'Create invoice' }}
           </button>
         </form>
 
-        <div v-if="store.invoices.length === 0" class="text-sm text-slate-500">
+        <div
+          v-if="store.invoices.length === 0"
+          class="rounded-2xl border border-dashed border-babyblue-200 bg-white/60 p-8 text-center text-sm text-slate-500"
+        >
           No invoices yet.
         </div>
         <ul v-else class="space-y-2">
-          <li
-            v-for="inv in store.invoices"
-            :key="inv.id"
-            class="rounded-lg border border-slate-200 bg-white p-4"
-          >
+          <li v-for="inv in store.invoices" :key="inv.id" class="rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm">
             <div class="flex items-center justify-between">
               <div>
                 <p class="font-medium text-slate-900">
@@ -508,49 +487,42 @@ async function handleCopySummary() {
                 </p>
               </div>
               <div class="flex items-center gap-2">
-                <span
-                  class="rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600"
-                  >{{ inv.status }}</span
-                >
-                <button
-                  type="button"
-                  class="text-xs font-medium text-slate-600 underline"
-                  @click="toggleShareLinks(inv.id)"
-                >
+                <span class="rounded-full px-2.5 py-1 text-xs font-medium" :class="statusBadgeClass(inv.status)">{{
+                  inv.status
+                }}</span>
+                <button type="button" :class="outlineButtonClass" @click="toggleShareLinks(inv.id)">
                   {{ shareLinksByInvoice[inv.id] ? 'Hide' : 'Share' }}
                 </button>
               </div>
             </div>
 
-            <div v-if="shareLoadingId === inv.id" class="mt-2 text-xs text-slate-400">
-              Loading links…
-            </div>
+            <div v-if="shareLoadingId === inv.id" class="mt-2 text-xs text-slate-400">Loading links…</div>
             <div
               v-else-if="shareLinksByInvoice[inv.id]"
-              class="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3 text-xs"
+              class="mt-3 flex flex-wrap items-center gap-2 border-t border-babyblue-100 pt-3 text-xs"
             >
               <a
                 v-if="shareLinksFor(inv.id).whatsapp.available"
                 :href="shareLinksFor(inv.id).whatsapp.url || undefined"
                 target="_blank"
                 rel="noopener"
-                class="rounded-md border border-slate-300 px-2 py-1 hover:bg-slate-100"
+                class="rounded-lg border border-babyblue-200 px-2.5 py-1.5 font-medium text-babyblue-700 transition-colors hover:bg-babyblue-100"
               >
-                WhatsApp
+                💬 WhatsApp
               </a>
               <a
                 v-if="shareLinksFor(inv.id).email.available"
                 :href="shareLinksFor(inv.id).email.url || undefined"
-                class="rounded-md border border-slate-300 px-2 py-1 hover:bg-slate-100"
+                class="rounded-lg border border-babyblue-200 px-2.5 py-1.5 font-medium text-babyblue-700 transition-colors hover:bg-babyblue-100"
               >
-                Email
+                ✉️ Email
               </a>
               <button
                 type="button"
-                class="rounded-md border border-slate-300 px-2 py-1 hover:bg-slate-100"
+                class="rounded-lg border border-babyblue-200 px-2.5 py-1.5 font-medium text-babyblue-700 transition-colors hover:bg-babyblue-100"
                 @click="copyPayLink(inv.id, inv.secureToken)"
               >
-                {{ copiedInvoiceId === inv.id ? 'Copied!' : 'Copy pay link' }}
+                {{ copiedInvoiceId === inv.id ? '✓ Copied!' : '🔗 Copy pay link' }}
               </button>
             </div>
           </li>
@@ -559,90 +531,91 @@ async function handleCopySummary() {
 
       <!-- TRANSACTIONS -->
       <section v-else-if="activeTab === 'transactions'">
-        <div v-if="store.transactions.length === 0" class="text-sm text-slate-500">
+        <div
+          v-if="store.transactions.length === 0"
+          class="rounded-2xl border border-dashed border-babyblue-200 bg-white/60 p-8 text-center text-sm text-slate-500"
+        >
           No transactions yet.
         </div>
-        <table v-else class="w-full text-left text-sm">
-          <thead class="text-xs uppercase text-slate-500">
-            <tr>
-              <th class="pb-2">Reference</th>
-              <th class="pb-2">Rail</th>
-              <th class="pb-2">Amount</th>
-              <th class="pb-2">Status</th>
-              <th class="pb-2">Date</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-slate-100">
-            <tr v-for="t in store.transactions" :key="t.id">
-              <td class="py-2 font-mono text-xs">{{ t.providerReference }}</td>
-              <td class="py-2">{{ t.paymentRail === 'MOBILE_MONEY' ? 'Mobile Money' : 'Card' }}</td>
-              <td class="py-2">{{ formatMoney(t.amountSettled) }}</td>
-              <td class="py-2">{{ t.status }}</td>
-              <td class="py-2 text-xs text-slate-500">{{ formatDate(t.timestamp) }}</td>
-            </tr>
-          </tbody>
-        </table>
+        <div v-else class="overflow-hidden rounded-2xl border border-babyblue-100 bg-white shadow-sm">
+          <table class="w-full text-left text-sm">
+            <thead class="bg-babyblue-50 text-xs tracking-wide text-babyblue-700 uppercase">
+              <tr>
+                <th class="px-4 py-3">Reference</th>
+                <th class="px-4 py-3">Rail</th>
+                <th class="px-4 py-3">Amount</th>
+                <th class="px-4 py-3">Status</th>
+                <th class="px-4 py-3">Date</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-babyblue-50">
+              <tr v-for="t in store.transactions" :key="t.id">
+                <td class="px-4 py-3 font-mono text-xs">{{ t.providerReference }}</td>
+                <td class="px-4 py-3">{{ t.paymentRail === 'MOBILE_MONEY' ? 'Mobile Money' : 'Card' }}</td>
+                <td class="px-4 py-3 font-medium">{{ formatMoney(t.amountSettled) }}</td>
+                <td class="px-4 py-3">
+                  <span class="rounded-full px-2.5 py-1 text-xs font-medium" :class="statusBadgeClass(t.status)">{{
+                    t.status
+                  }}</span>
+                </td>
+                <td class="px-4 py-3 text-xs text-slate-500">{{ formatDate(t.timestamp) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </section>
 
       <!-- CONTRIBUTORS -->
       <section v-else-if="activeTab === 'contributors'">
         <div v-if="contributorsLoading" class="text-sm text-slate-500">Loading…</div>
-        <div v-else-if="contributorsError" class="text-sm text-red-600">
-          {{ contributorsError }}
-        </div>
+        <div v-else-if="contributorsError" class="text-sm text-red-600">{{ contributorsError }}</div>
         <template v-else-if="contributorSummary">
-          <div class="mb-4 flex items-center justify-between">
-            <div class="flex gap-4 text-sm">
-              <span class="text-slate-600"
-                >Pledged:
-                <strong>{{ formatMoney(contributorSummary.totals.pledged) }}</strong></span
+          <div class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm">
+            <div class="flex gap-6 text-sm">
+              <span class="text-slate-500"
+                >Pledged
+                <strong class="block text-base text-slate-900">{{
+                  formatMoney(contributorSummary.totals.pledged)
+                }}</strong></span
               >
-              <span class="text-slate-600"
-                >Received:
-                <strong>{{ formatMoney(contributorSummary.totals.received) }}</strong></span
+              <span class="text-slate-500"
+                >Received
+                <strong class="block text-base text-babyblue-700">{{
+                  formatMoney(contributorSummary.totals.received)
+                }}</strong></span
               >
             </div>
-            <button
-              type="button"
-              class="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium hover:bg-slate-100"
-              @click="handleCopySummary"
-            >
-              {{ copiedSummary ? 'Copied!' : 'Copy WhatsApp summary' }}
+            <button type="button" :class="outlineButtonClass" @click="handleCopySummary">
+              {{ copiedSummary ? '✓ Copied!' : '📋 Copy WhatsApp summary' }}
             </button>
           </div>
 
           <div class="grid gap-4 sm:grid-cols-3">
-            <div>
-              <h3 class="mb-2 text-xs font-semibold uppercase text-green-700">Fully Paid</h3>
+            <div class="rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm">
+              <h3 class="mb-2 text-xs font-semibold text-green-700 uppercase">✅ Fully Paid</h3>
               <ul class="space-y-1 text-sm">
                 <li v-for="c in contributorSummary.buckets.fullyPaid" :key="c.invoiceId">
                   {{ c.contributorName ?? 'Anonymous' }} — {{ formatMoney(c.amountPaid) }}
-                  <span v-if="c.contributorPhone" class="text-xs text-slate-400"
-                    >({{ c.contributorPhone }})</span
-                  >
+                  <span v-if="c.contributorPhone" class="text-xs text-slate-400">({{ c.contributorPhone }})</span>
                 </li>
               </ul>
             </div>
-            <div>
-              <h3 class="mb-2 text-xs font-semibold uppercase text-amber-700">Partially Paid</h3>
+            <div class="rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm">
+              <h3 class="mb-2 text-xs font-semibold text-amber-700 uppercase">🔶 Partially Paid</h3>
               <ul class="space-y-1 text-sm">
                 <li v-for="c in contributorSummary.buckets.partiallyPaid" :key="c.invoiceId">
                   {{ c.contributorName ?? 'Anonymous' }} — {{ formatMoney(c.amountPaid) }} of
                   {{ formatMoney(c.amountRequested) }}
-                  <span v-if="c.contributorPhone" class="text-xs text-slate-400"
-                    >({{ c.contributorPhone }})</span
-                  >
+                  <span v-if="c.contributorPhone" class="text-xs text-slate-400">({{ c.contributorPhone }})</span>
                 </li>
               </ul>
             </div>
-            <div>
-              <h3 class="mb-2 text-xs font-semibold uppercase text-slate-700">Pledged</h3>
+            <div class="rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm">
+              <h3 class="mb-2 text-xs font-semibold text-babyblue-700 uppercase">🕓 Pledged</h3>
               <ul class="space-y-1 text-sm">
                 <li v-for="c in contributorSummary.buckets.pledged" :key="c.invoiceId">
                   {{ c.contributorName ?? 'Anonymous' }} — {{ formatMoney(c.amountRequested) }}
-                  <span v-if="c.contributorPhone" class="text-xs text-slate-400"
-                    >({{ c.contributorPhone }})</span
-                  >
+                  <span v-if="c.contributorPhone" class="text-xs text-slate-400">({{ c.contributorPhone }})</span>
                 </li>
               </ul>
             </div>

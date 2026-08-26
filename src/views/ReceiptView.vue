@@ -34,20 +34,18 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="flex min-h-screen items-center justify-center bg-slate-50 px-4">
-    <div class="w-full max-w-md rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+  <div
+    class="flex min-h-screen items-center justify-center bg-gradient-to-br from-babyblue-50 via-white to-babyblue-100 px-4"
+  >
+    <div class="w-full max-w-md rounded-2xl border border-babyblue-100 bg-white p-7 shadow-lg shadow-babyblue-100">
       <div v-if="loading" class="text-sm text-slate-500">Loading receipt…</div>
 
       <div v-else-if="error">
-        <p class="text-sm text-amber-700">
-          {{ error }}
-        </p>
-        <p class="mt-2 text-xs text-slate-500">
-          If you just paid, settlement can take a few seconds to arrive.
-        </p>
+        <p class="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700">{{ error }}</p>
+        <p class="mt-2 text-xs text-slate-500">If you just paid, settlement can take a few seconds to arrive.</p>
         <button
           type="button"
-          class="mt-4 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+          class="mt-4 w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm font-medium text-babyblue-700 transition-colors hover:bg-babyblue-100"
           @click="load"
         >
           Check again
@@ -55,16 +53,17 @@ onMounted(load)
       </div>
 
       <template v-else-if="receipt">
-        <div class="mb-4 text-center">
+        <div class="mb-5 text-center">
           <div
-            class="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-green-100 text-green-700"
+            class="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-green-100 text-2xl text-green-700"
           >
             ✓
           </div>
           <h1 class="text-lg font-semibold text-slate-900">Payment received</h1>
+          <p class="mt-1 text-sm text-slate-500">Thank you for your contribution!</p>
         </div>
 
-        <dl class="space-y-2 text-sm">
+        <dl class="space-y-2 rounded-xl bg-babyblue-50 p-4 text-sm">
           <div class="flex justify-between">
             <dt class="text-slate-500">Event</dt>
             <dd class="font-medium text-slate-900">{{ receipt.event.title }}</dd>
@@ -81,9 +80,9 @@ onMounted(load)
             <dt class="text-slate-500">Category</dt>
             <dd class="text-slate-900">{{ receipt.categoryTag }}</dd>
           </div>
-          <div class="flex justify-between border-t border-slate-200 pt-2">
+          <div class="flex justify-between border-t border-babyblue-200 pt-2">
             <dt class="text-slate-500">Amount paid</dt>
-            <dd class="font-semibold text-slate-900">{{ formatMoney(receipt.amountPaid) }}</dd>
+            <dd class="font-semibold text-babyblue-700">{{ formatMoney(receipt.amountPaid) }}</dd>
           </div>
           <div class="flex justify-between">
             <dt class="text-slate-500">Payment method</dt>

@@ -55,28 +55,28 @@ async function handleSubmit() {
 </script>
 
 <template>
-  <div class="flex min-h-screen items-center justify-center bg-slate-50 px-4">
-    <div class="w-full max-w-md rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+  <div
+    class="flex min-h-screen items-center justify-center bg-gradient-to-br from-babyblue-50 via-white to-babyblue-100 px-4"
+  >
+    <div class="w-full max-w-md rounded-2xl border border-babyblue-100 bg-white p-7 shadow-lg shadow-babyblue-100">
       <div v-if="loading" class="text-sm text-slate-500">Loading…</div>
-      <div v-else-if="loadError" class="text-sm text-red-600">{{ loadError }}</div>
+      <div v-else-if="loadError" class="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{{ loadError }}</div>
       <template v-else-if="invoice">
-        <h1 class="text-lg font-semibold text-slate-900">{{ invoice.event.title }}</h1>
-        <p v-if="invoice.categoryTag" class="mt-1 text-sm text-slate-500">
-          {{ invoice.categoryTag }}
-        </p>
+        <div class="mb-1 flex items-center gap-2">
+          <span class="flex h-9 w-9 items-center justify-center rounded-lg bg-babyblue-500 text-sm font-bold text-white">
+            OP
+          </span>
+          <h1 class="text-lg font-semibold text-slate-900">{{ invoice.event.title }}</h1>
+        </div>
+        <p v-if="invoice.categoryTag" class="ml-11 text-sm text-babyblue-600">{{ invoice.categoryTag }}</p>
 
-        <div v-if="isClosed" class="mt-6 rounded-md bg-slate-100 p-4 text-sm text-slate-700">
-          <span v-if="invoice.status === 'PAID'"
-            >This invoice has already been paid in full. Thank you!</span
-          >
-          <span v-else>This invoice has expired.</span>
+        <div v-if="isClosed" class="mt-6 rounded-xl bg-babyblue-50 p-4 text-sm text-slate-700">
+          <span v-if="invoice.status === 'PAID'">✅ This invoice has already been paid in full. Thank you!</span>
+          <span v-else>⏱️ This invoice has expired.</span>
         </div>
 
         <form v-else class="mt-6 space-y-4" @submit.prevent="handleSubmit">
-          <div
-            v-if="isSingleUse && invoice.amountRequested"
-            class="rounded-md bg-slate-50 p-3 text-sm"
-          >
+          <div v-if="isSingleUse && invoice.amountRequested" class="rounded-xl bg-babyblue-50 p-4 text-sm">
             <div class="flex justify-between text-slate-600">
               <span>Requested</span>
               <span>{{ formatMoney(invoice.amountRequested) }}</span>
@@ -85,7 +85,7 @@ async function handleSubmit() {
               <span>Already paid</span>
               <span>{{ formatMoney(invoice.amountPaid) }}</span>
             </div>
-            <div class="mt-1 flex justify-between font-medium text-slate-900">
+            <div class="mt-1 flex justify-between border-t border-babyblue-100 pt-1 font-semibold text-babyblue-700">
               <span>Remaining</span>
               <span>{{ formatMoney(remaining) }}</span>
             </div>
@@ -97,7 +97,7 @@ async function handleSubmit() {
               v-model="email"
               type="email"
               required
-              class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+              class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none"
             />
           </div>
 
@@ -110,21 +110,21 @@ async function handleSubmit() {
               min="0.01"
               :max="remaining ?? undefined"
               required
-              class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+              class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none"
             />
             <p v-if="remaining !== null" class="mt-1 text-xs text-slate-500">
               You can pay this off in full or leave a smaller partial amount.
             </p>
           </div>
 
-          <p v-if="submitError" class="text-sm text-red-600">{{ submitError }}</p>
+          <p v-if="submitError" class="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{{ submitError }}</p>
 
           <button
             type="submit"
             :disabled="submitting"
-            class="w-full rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+            class="w-full rounded-lg bg-babyblue-600 px-3 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-babyblue-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {{ submitting ? 'Redirecting to payment…' : 'Pay with card or mobile money' }}
+            {{ submitting ? 'Redirecting to payment…' : '💳 Pay with card or mobile money' }}
           </button>
         </form>
       </template>

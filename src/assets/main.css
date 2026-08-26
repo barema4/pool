@@ -1,1 +1,27 @@
 @import 'tailwindcss';
+
+/* "babyblue" is an alias over Tailwind's built-in sky scale — sky-300
+   (#7dd3fc) is close to the classic baby-blue pastel, and the rest of the
+   scale is already contrast-checked, so every bg/text/border/ring utility
+   (bg-babyblue-600, ring-babyblue-200, etc.) just works without redefining
+   a palette from scratch. */
+@theme {
+  --color-babyblue-50: var(--color-sky-50);
+  --color-babyblue-100: var(--color-sky-100);
+  --color-babyblue-200: var(--color-sky-200);
+  --color-babyblue-300: var(--color-sky-300);
+  --color-babyblue-400: var(--color-sky-400);
+  --color-babyblue-500: var(--color-sky-500);
+  --color-babyblue-600: var(--color-sky-600);
+  --color-babyblue-700: var(--color-sky-700);
+  --color-babyblue-800: var(--color-sky-800);
+  --color-babyblue-900: var(--color-sky-900);
+  --color-babyblue-950: var(--color-sky-950);
+
+  --font-sans:
+    'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+}
+
+body {
+  background-color: var(--color-babyblue-50);
+}

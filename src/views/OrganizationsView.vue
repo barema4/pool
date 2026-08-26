@@ -15,6 +15,13 @@ const error = ref('')
 const submitting = ref(false)
 
 const orgTypes: OrganizationType[] = ['CHURCH', 'CHAMA', 'SACCO', 'COLLECTIVE', 'OTHER']
+const orgTypeEmoji: Record<OrganizationType, string> = {
+  CHURCH: '⛪',
+  CHAMA: '🤝',
+  SACCO: '🏦',
+  COLLECTIVE: '🎨',
+  OTHER: '📁',
+}
 
 onMounted(() => store.fetchMine())
 
@@ -36,19 +43,22 @@ async function handleCreate() {
 <template>
   <DashboardLayout>
     <div class="mb-6 flex items-center justify-between">
-      <h1 class="text-xl font-semibold text-slate-900">Your organizations</h1>
+      <div>
+        <h1 class="text-2xl font-semibold text-slate-900">Your organizations</h1>
+        <p class="mt-1 text-sm text-slate-500">Manage the churches, chamas, and groups you're part of.</p>
+      </div>
       <button
         type="button"
-        class="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
+        class="rounded-lg bg-babyblue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-babyblue-700"
         @click="showForm = !showForm"
       >
-        {{ showForm ? 'Cancel' : 'New organization' }}
+        {{ showForm ? 'Cancel' : '+ New organization' }}
       </button>
     </div>
 
     <form
       v-if="showForm"
-      class="mb-6 space-y-3 rounded-lg border border-slate-200 bg-white p-4"
+      class="mb-6 space-y-3 rounded-2xl border border-babyblue-100 bg-white p-5 shadow-sm"
       @submit.prevent="handleCreate"
     >
       <div>
@@ -57,43 +67,53 @@ async function handleCreate() {
           v-model="name"
           type="text"
           required
-          class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+          class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none"
         />
       </div>
       <div>
         <label class="mb-1 block text-sm font-medium text-slate-700">Type</label>
         <select
           v-model="type"
-          class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+          class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none"
         >
-          <option v-for="t in orgTypes" :key="t" :value="t">{{ t }}</option>
+          <option v-for="t in orgTypes" :key="t" :value="t">{{ orgTypeEmoji[t] }} {{ t }}</option>
         </select>
       </div>
-      <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
+      <p v-if="error" class="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{{ error }}</p>
       <button
         type="submit"
         :disabled="submitting"
-        class="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+        class="rounded-lg bg-babyblue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-babyblue-700 disabled:cursor-not-allowed disabled:opacity-50"
       >
         {{ submitting ? 'Creating…' : 'Create' }}
       </button>
     </form>
 
     <div v-if="store.loading" class="text-sm text-slate-500">Loading…</div>
-    <div v-else-if="store.organizations.length === 0" class="text-sm text-slate-500">
-      You're not part of any organization yet.
+    <div
+      v-else-if="store.organizations.length === 0"
+      class="rounded-2xl border border-dashed border-babyblue-200 bg-white/60 p-10 text-center"
+    >
+      <p class="text-3xl">🌱</p>
+      <p class="mt-2 text-sm font-medium text-slate-700">You're not part of any organization yet.</p>
+      <p class="mt-1 text-sm text-slate-500">Create one to start pooling contributions.</p>
     </div>
-    <ul v-else class="space-y-2">
+    <ul v-else class="grid gap-3 sm:grid-cols-2">
       <li v-for="org in store.organizations" :key="org.id">
         <RouterLink
           :to="{ name: 'organization-detail', params: { organizationId: org.id } }"
-          class="flex items-center justify-between rounded-lg border border-slate-200 bg-white p-4 hover:border-slate-300"
+          class="flex items-center justify-between rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-babyblue-300 hover:shadow-md"
         >
-          <div>
-            <p class="font-medium text-slate-900">{{ org.name }}</p>
-            <p class="text-xs text-slate-500">{{ org.type }}</p>
+          <div class="flex items-center gap-3">
+            <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-babyblue-50 text-lg">
+              {{ orgTypeEmoji[org.type] }}
+            </span>
+            <div>
+              <p class="font-medium text-slate-900">{{ org.name }}</p>
+              <p class="text-xs text-slate-500">{{ org.type }}</p>
+            </div>
           </div>
-          <span class="rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600">
+          <span class="rounded-full bg-babyblue-100 px-2.5 py-1 text-xs font-medium text-babyblue-700">
             {{ org.role }}
           </span>
         </RouterLink>

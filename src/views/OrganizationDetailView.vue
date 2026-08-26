@@ -6,6 +6,7 @@ import * as organizationsApi from '@/api/organizations'
 import * as eventsApi from '@/api/events'
 import { useOrganizationsStore } from '@/stores/organizations'
 import { extractErrorMessage } from '@/api/client'
+import { statusBadgeClass } from '@/lib/format'
 import type { Organization, OrganizationMember, EventRecord, OrgRole } from '@/types/api'
 
 const route = useRoute()
@@ -112,26 +113,26 @@ async function handleCreateEvent() {
     <div v-else-if="loadError" class="text-sm text-red-600">{{ loadError }}</div>
 
     <template v-else-if="organization">
-      <h1 class="text-xl font-semibold text-slate-900">{{ organization.name }}</h1>
+      <h1 class="text-2xl font-semibold text-slate-900">{{ organization.name }}</h1>
       <p class="mb-6 text-sm text-slate-500">{{ organization.type }}</p>
 
       <!-- Members -->
       <section class="mb-8">
         <div class="mb-3 flex items-center justify-between">
-          <h2 class="text-sm font-semibold text-slate-700">Members</h2>
+          <h2 class="text-sm font-semibold tracking-wide text-babyblue-700 uppercase">Members</h2>
           <button
             v-if="canInvite"
             type="button"
-            class="text-xs font-medium text-slate-600 underline"
+            class="rounded-lg border border-babyblue-200 px-3 py-1 text-xs font-medium text-babyblue-700 transition-colors hover:bg-babyblue-100"
             @click="showInviteForm = !showInviteForm"
           >
-            {{ showInviteForm ? 'Cancel' : 'Invite member' }}
+            {{ showInviteForm ? 'Cancel' : '+ Invite member' }}
           </button>
         </div>
 
         <form
           v-if="showInviteForm"
-          class="mb-3 space-y-2 rounded-lg border border-slate-200 bg-white p-4"
+          class="mb-3 space-y-2 rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm"
           @submit.prevent="handleInvite"
         >
           <input
@@ -139,37 +140,36 @@ async function handleCreateEvent() {
             type="email"
             required
             placeholder="member@example.com"
-            class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+            class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none"
           />
           <select
             v-model="inviteRole"
-            class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+            class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none"
           >
             <option v-for="r in roles" :key="r" :value="r">{{ r }}</option>
           </select>
-          <p v-if="inviteError" class="text-sm text-red-600">{{ inviteError }}</p>
+          <p v-if="inviteError" class="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{{ inviteError }}</p>
           <button
             type="submit"
             :disabled="inviting"
-            class="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+            class="rounded-lg bg-babyblue-600 px-3 py-1.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-babyblue-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {{ inviting ? 'Inviting…' : 'Send invite' }}
           </button>
         </form>
 
-        <ul class="space-y-1">
+        <ul class="space-y-1.5">
           <li
             v-for="m in members"
             :key="m.id"
-            class="flex items-center justify-between rounded-md border border-slate-200 bg-white px-3 py-2 text-sm"
+            class="flex items-center justify-between rounded-xl border border-babyblue-100 bg-white px-4 py-2.5 text-sm shadow-sm"
           >
             <span
               >{{ m.user.name }} <span class="text-slate-400">({{ m.user.email }})</span></span
             >
-            <span
-              class="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600"
-              >{{ m.role }}</span
-            >
+            <span class="rounded-full bg-babyblue-100 px-2.5 py-1 text-xs font-medium text-babyblue-700">{{
+              m.role
+            }}</span>
           </li>
         </ul>
       </section>
@@ -177,20 +177,20 @@ async function handleCreateEvent() {
       <!-- Events -->
       <section>
         <div class="mb-3 flex items-center justify-between">
-          <h2 class="text-sm font-semibold text-slate-700">Events</h2>
+          <h2 class="text-sm font-semibold tracking-wide text-babyblue-700 uppercase">Events</h2>
           <button
             v-if="canManage"
             type="button"
-            class="text-xs font-medium text-slate-600 underline"
+            class="rounded-lg border border-babyblue-200 px-3 py-1 text-xs font-medium text-babyblue-700 transition-colors hover:bg-babyblue-100"
             @click="showEventForm = !showEventForm"
           >
-            {{ showEventForm ? 'Cancel' : 'New event' }}
+            {{ showEventForm ? 'Cancel' : '+ New event' }}
           </button>
         </div>
 
         <form
           v-if="showEventForm"
-          class="mb-3 space-y-2 rounded-lg border border-slate-200 bg-white p-4"
+          class="mb-3 space-y-2 rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm"
           @submit.prevent="handleCreateEvent"
         >
           <input
@@ -198,51 +198,60 @@ async function handleCreateEvent() {
             type="text"
             required
             placeholder="Event title"
-            class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+            class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none"
           />
           <textarea
             v-model="eventDescription"
             placeholder="Description (optional)"
-            class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+            class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none"
           />
           <input
             v-model.number="eventTargetGoal"
             type="number"
             step="0.01"
             placeholder="Target goal (optional)"
-            class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+            class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none"
           />
           <label class="flex items-center gap-2 text-sm text-slate-700">
-            <input v-model="eventIsPermanent" type="checkbox" />
+            <input v-model="eventIsPermanent" type="checkbox" class="accent-babyblue-600" />
             Permanent / rolling collection (no expiry, e.g. tithes)
           </label>
-          <p v-if="eventError" class="text-sm text-red-600">{{ eventError }}</p>
+          <p v-if="eventError" class="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{{ eventError }}</p>
           <button
             type="submit"
             :disabled="creatingEvent"
-            class="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+            class="rounded-lg bg-babyblue-600 px-3 py-1.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-babyblue-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {{ creatingEvent ? 'Creating…' : 'Create event' }}
           </button>
         </form>
 
-        <div v-if="events.length === 0" class="text-sm text-slate-500">No events yet.</div>
-        <ul v-else class="space-y-2">
+        <div
+          v-if="events.length === 0"
+          class="rounded-2xl border border-dashed border-babyblue-200 bg-white/60 p-8 text-center text-sm text-slate-500"
+        >
+          No events yet.
+        </div>
+        <ul v-else class="grid gap-3 sm:grid-cols-2">
           <li v-for="evt in events" :key="evt.id">
             <RouterLink
               :to="{ name: 'event-detail', params: { eventId: evt.id } }"
-              class="flex items-center justify-between rounded-lg border border-slate-200 bg-white p-4 hover:border-slate-300"
+              class="flex items-center justify-between rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-babyblue-300 hover:shadow-md"
             >
-              <div>
-                <p class="font-medium text-slate-900">{{ evt.title }}</p>
-                <p class="text-xs text-slate-500">
-                  {{ evt.isPermanent ? 'Permanent' : 'Milestone' }}
-                </p>
+              <div class="flex items-center gap-3">
+                <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-babyblue-50 text-lg">
+                  {{ evt.isPermanent ? '🔁' : '🎉' }}
+                </span>
+                <div>
+                  <p class="font-medium text-slate-900">{{ evt.title }}</p>
+                  <p class="text-xs text-slate-500">
+                    {{ evt.isPermanent ? 'Permanent' : 'Milestone' }}
+                  </p>
+                </div>
               </div>
-              <span
-                class="rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600"
-                >{{ evt.status }}</span
-              >
+              <span class="rounded-full px-2.5 py-1 text-xs font-medium" :class="statusBadgeClass(evt.status)">{{
+                evt.status
+              }}</span>
             </RouterLink>
           </li>
         </ul>

@@ -17,3 +17,23 @@ export async function copyToClipboard(text: string): Promise<boolean> {
     return false
   }
 }
+
+// Consistent semantic coloring for status/role pills across the app —
+// green for "done", amber for "in progress", red for "failed/expired",
+// babyblue as the neutral default for everything else.
+const STATUS_STYLES: Record<string, string> = {
+  PAID: 'bg-green-100 text-green-700',
+  SUCCESS: 'bg-green-100 text-green-700',
+  ACTIVE: 'bg-green-100 text-green-700',
+  PARTIALLY_PAID: 'bg-amber-100 text-amber-700',
+  PENDING: 'bg-babyblue-100 text-babyblue-700',
+  DRAFT: 'bg-babyblue-100 text-babyblue-700',
+  EXPIRED: 'bg-red-100 text-red-700',
+  FAILED: 'bg-red-100 text-red-700',
+  CLOSED: 'bg-slate-100 text-slate-600',
+  ARCHIVED: 'bg-slate-100 text-slate-600',
+}
+
+export function statusBadgeClass(status: string): string {
+  return STATUS_STYLES[status] ?? 'bg-babyblue-100 text-babyblue-700'
+}
