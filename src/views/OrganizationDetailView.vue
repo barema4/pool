@@ -162,14 +162,15 @@ async function handleCreateEvent() {
           <li
             v-for="m in members"
             :key="m.id"
-            class="flex items-center justify-between rounded-xl border border-babyblue-100 bg-white px-4 py-2.5 text-sm shadow-sm"
+            class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-babyblue-100 bg-white px-4 py-2.5 text-sm shadow-sm"
           >
-            <span
+            <span class="min-w-0 break-words"
               >{{ m.user.name }} <span class="text-slate-400">({{ m.user.email }})</span></span
             >
-            <span class="rounded-full bg-babyblue-100 px-2.5 py-1 text-xs font-medium text-babyblue-700">{{
-              m.role
-            }}</span>
+            <span
+              class="shrink-0 rounded-full bg-babyblue-100 px-2.5 py-1 text-xs font-medium text-babyblue-700"
+              >{{ m.role }}</span
+            >
           </li>
         </ul>
       </section>
