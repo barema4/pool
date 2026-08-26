@@ -11,7 +11,10 @@ export function getInvoiceByToken(token: string) {
   return publicApiClient.get<PublicInvoiceView>(`/public/invoices/${token}`).then((r) => r.data)
 }
 
-export function initializeCheckout(token: string, payload: { email: string; amount?: number }) {
+export function initializeCheckout(
+  token: string,
+  payload: { email: string; amount?: number; contributorName?: string; contributorPhone?: string },
+) {
   return publicApiClient
     .post<CheckoutResult>(`/payments/checkout/${token}`, payload)
     .then((r) => r.data)
@@ -22,7 +25,7 @@ export function createPledge(
   payload: {
     contributorName: string
     contributorPhone: string
-    amountPledged: number
+    amountPledged?: number
     categoryTag?: string
   },
 ) {

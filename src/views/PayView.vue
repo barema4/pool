@@ -3,8 +3,8 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import * as publicApi from '@/api/public'
 import { extractErrorMessage } from '@/api/client'
-import { formatMoney } from '@/lib/format'
-import type { PublicInvoiceView } from '@/types/api'
+import { formatMoney, copyToClipboard } from '@/lib/format'
+import type { PublicInvoiceView, Invoice } from '@/types/api'
 
 const route = useRoute()
 const token = route.params.token as string
@@ -13,12 +13,24 @@ const invoice = ref<PublicInvoiceView | null>(null)
 const loadError = ref('')
 const loading = ref(true)
 
+type Mode = 'pay' | 'pledge'
+const mode = ref<Mode>('pay')
+
+const name = ref('')
 const email = ref('')
+const phone = ref('')
 const amount = ref<number | null>(null)
 const submitError = ref('')
 const submitting = ref(false)
+const pledgeCreated = ref<Invoice | null>(null)
+const copiedPledgeLink = ref(false)
+
+const nameLocked = computed(() => !!invoice.value?.contributorName)
+const emailLocked = computed(() => !!invoice.value?.contributorEmail)
+const phoneLocked = computed(() => !!invoice.value?.contributorPhone)
 
 const isSingleUse = computed(() => !!invoice.value?.expiresAt)
+const hasFixedAmount = computed(() => invoice.value?.amountRequested !== null)
 const remaining = computed(() => {
   if (!invoice.value?.amountRequested) return null
   return Math.max(Number(invoice.value.amountRequested) - Number(invoice.value.amountPaid), 0)
@@ -30,6 +42,9 @@ const isClosed = computed(
 onMounted(async () => {
   try {
     invoice.value = await publicApi.getInvoiceByToken(token)
+    if (invoice.value.contributorName) name.value = invoice.value.contributorName
+    if (invoice.value.contributorEmail) email.value = invoice.value.contributorEmail
+    if (invoice.value.contributorPhone) phone.value = invoice.value.contributorPhone
     if (remaining.value !== null) amount.value = remaining.value
   } catch (err) {
     loadError.value = extractErrorMessage(err)
@@ -38,19 +53,52 @@ onMounted(async () => {
   }
 })
 
-async function handleSubmit() {
+async function handlePay() {
   submitError.value = ''
   submitting.value = true
   try {
     const result = await publicApi.initializeCheckout(token, {
       email: email.value,
       amount: amount.value ?? undefined,
+      contributorName: name.value || undefined,
+      contributorPhone: phone.value || undefined,
     })
     window.location.href = result.authorizationUrl
   } catch (err) {
     submitError.value = extractErrorMessage(err)
     submitting.value = false
   }
+}
+
+async function handlePledge() {
+  if (!invoice.value) return
+  submitError.value = ''
+  submitting.value = true
+  try {
+    pledgeCreated.value = await publicApi.createPledge(invoice.value.event.id, {
+      contributorName: name.value,
+      contributorPhone: phone.value,
+      categoryTag: invoice.value.categoryTag ?? undefined,
+    })
+  } catch (err) {
+    submitError.value = extractErrorMessage(err)
+  } finally {
+    submitting.value = false
+  }
+}
+
+function handleSubmit() {
+  if (mode.value === 'pay') return handlePay()
+  return handlePledge()
+}
+
+const pledgePayLink = computed(() =>
+  pledgeCreated.value ? `${window.location.origin}/pay/${pledgeCreated.value.secureToken}` : '',
+)
+
+async function copyPledgeLink() {
+  copiedPledgeLink.value = await copyToClipboard(pledgePayLink.value)
+  setTimeout(() => (copiedPledgeLink.value = false), 2000)
 }
 </script>
 
@@ -61,6 +109,37 @@ async function handleSubmit() {
     <div class="w-full max-w-md rounded-2xl border border-babyblue-100 bg-white p-7 shadow-lg shadow-babyblue-100">
       <div v-if="loading" class="text-sm text-slate-500">Loading…</div>
       <div v-else-if="loadError" class="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{{ loadError }}</div>
+
+      <template v-else-if="pledgeCreated">
+        <div class="mb-5 text-center">
+          <div
+            class="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-green-100 text-2xl text-green-700"
+          >
+            ✓
+          </div>
+          <h1 class="text-lg font-semibold text-slate-900">Thank you, {{ pledgeCreated.contributorName }}!</h1>
+          <p class="mt-1 text-sm text-slate-500">Your pledge has been recorded.</p>
+        </div>
+
+        <div class="rounded-xl bg-babyblue-50 p-4 text-sm">
+          <p class="mb-2 text-slate-600">Use this link any time you're ready to pay:</p>
+          <div class="flex items-center gap-2">
+            <input
+              readonly
+              :value="pledgePayLink"
+              class="w-full truncate rounded-lg border border-babyblue-200 bg-white px-2 py-1.5 text-xs"
+            />
+            <button
+              type="button"
+              class="shrink-0 rounded-lg border border-babyblue-200 px-2.5 py-1.5 text-xs font-medium text-babyblue-700 transition-colors hover:bg-babyblue-100"
+              @click="copyPledgeLink"
+            >
+              {{ copiedPledgeLink ? '✓ Copied!' : 'Copy' }}
+            </button>
+          </div>
+        </div>
+      </template>
+
       <template v-else-if="invoice">
         <div class="mb-1 flex items-center gap-2">
           <span class="flex h-9 w-9 items-center justify-center rounded-lg bg-babyblue-500 text-sm font-bold text-white">
@@ -75,58 +154,127 @@ async function handleSubmit() {
           <span v-else>⏱️ This invoice has expired.</span>
         </div>
 
-        <form v-else class="mt-6 space-y-4" @submit.prevent="handleSubmit">
-          <div v-if="isSingleUse && invoice.amountRequested" class="rounded-xl bg-babyblue-50 p-4 text-sm">
-            <div class="flex justify-between text-slate-600">
-              <span>Requested</span>
-              <span>{{ formatMoney(invoice.amountRequested) }}</span>
-            </div>
-            <div v-if="Number(invoice.amountPaid) > 0" class="flex justify-between text-slate-600">
-              <span>Already paid</span>
-              <span>{{ formatMoney(invoice.amountPaid) }}</span>
-            </div>
-            <div class="mt-1 flex justify-between border-t border-babyblue-100 pt-1 font-semibold text-babyblue-700">
-              <span>Remaining</span>
-              <span>{{ formatMoney(remaining) }}</span>
-            </div>
+        <template v-else>
+          <!-- Pay now / Pledge selector -->
+          <div class="mt-6 inline-flex w-full gap-1 rounded-xl bg-babyblue-100/70 p-1">
+            <button
+              type="button"
+              class="flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-colors"
+              :class="mode === 'pay' ? 'bg-white text-babyblue-700 shadow-sm' : 'text-slate-500 hover:text-babyblue-700'"
+              @click="mode = 'pay'"
+            >
+              💳 Pay now
+            </button>
+            <button
+              type="button"
+              class="flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-colors"
+              :class="
+                mode === 'pledge' ? 'bg-white text-babyblue-700 shadow-sm' : 'text-slate-500 hover:text-babyblue-700'
+              "
+              @click="mode = 'pledge'"
+            >
+              🕓 Pledge
+            </button>
           </div>
 
-          <div>
-            <label class="mb-1 block text-sm font-medium text-slate-700">Email</label>
-            <input
-              v-model="email"
-              type="email"
-              required
-              class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none"
-            />
-          </div>
+          <form class="mt-4 space-y-4" @submit.prevent="handleSubmit">
+            <div v-if="mode === 'pay' && isSingleUse && hasFixedAmount" class="rounded-xl bg-babyblue-50 p-4 text-sm">
+              <div class="flex justify-between text-slate-600">
+                <span>Requested</span>
+                <span>{{ formatMoney(invoice.amountRequested) }}</span>
+              </div>
+              <div v-if="Number(invoice.amountPaid) > 0" class="flex justify-between text-slate-600">
+                <span>Already paid</span>
+                <span>{{ formatMoney(invoice.amountPaid) }}</span>
+              </div>
+              <div class="mt-1 flex justify-between border-t border-babyblue-100 pt-1 font-semibold text-babyblue-700">
+                <span>Remaining</span>
+                <span>{{ formatMoney(remaining) }}</span>
+              </div>
+            </div>
 
-          <div>
-            <label class="mb-1 block text-sm font-medium text-slate-700">Amount to pay</label>
-            <input
-              v-model.number="amount"
-              type="number"
-              step="0.01"
-              min="0.01"
-              :max="remaining ?? undefined"
-              required
-              class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none"
-            />
-            <p v-if="remaining !== null" class="mt-1 text-xs text-slate-500">
-              You can pay this off in full or leave a smaller partial amount.
+            <div>
+              <label class="mb-1 block text-sm font-medium text-slate-700">Your name</label>
+              <input
+                v-model="name"
+                type="text"
+                :required="mode === 'pledge'"
+                :readonly="nameLocked"
+                :class="[
+                  'w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none',
+                  nameLocked ? 'bg-babyblue-50 text-slate-500' : '',
+                ]"
+              />
+            </div>
+
+            <div>
+              <label class="mb-1 block text-sm font-medium text-slate-700">Email</label>
+              <input
+                v-model="email"
+                type="email"
+                :required="mode === 'pay'"
+                :readonly="emailLocked"
+                :class="[
+                  'w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none',
+                  emailLocked ? 'bg-babyblue-50 text-slate-500' : '',
+                ]"
+              />
+            </div>
+
+            <div>
+              <label class="mb-1 block text-sm font-medium text-slate-700">Phone{{ mode === 'pay' ? ' (optional)' : '' }}</label>
+              <input
+                v-model="phone"
+                type="tel"
+                :required="mode === 'pledge'"
+                :readonly="phoneLocked"
+                :class="[
+                  'w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none',
+                  phoneLocked ? 'bg-babyblue-50 text-slate-500' : '',
+                ]"
+              />
+            </div>
+
+            <div v-if="mode === 'pay'">
+              <label class="mb-1 block text-sm font-medium text-slate-700">Amount to pay</label>
+              <input
+                v-model.number="amount"
+                type="number"
+                step="0.01"
+                min="0.01"
+                :max="remaining ?? undefined"
+                :readonly="isSingleUse && hasFixedAmount && remaining === Number(invoice.amountRequested)"
+                required
+                class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none"
+              />
+              <p v-if="remaining !== null" class="mt-1 text-xs text-slate-500">
+                You can pay this off in full or leave a smaller partial amount.
+              </p>
+            </div>
+            <p v-else class="text-xs text-slate-500">
+              No amount needed — this just lets the organizer know you're contributing. You'll get a personal link
+              to pay whenever you're ready.
             </p>
-          </div>
 
-          <p v-if="submitError" class="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{{ submitError }}</p>
+            <p v-if="submitError" class="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{{ submitError }}</p>
 
-          <button
-            type="submit"
-            :disabled="submitting"
-            class="w-full rounded-lg bg-babyblue-600 px-3 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-babyblue-700 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {{ submitting ? 'Redirecting to payment…' : '💳 Pay with card or mobile money' }}
-          </button>
-        </form>
+            <button
+              type="submit"
+              :disabled="submitting"
+              class="w-full rounded-lg bg-babyblue-600 px-3 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-babyblue-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {{
+                submitting
+                  ? mode === 'pay'
+                    ? 'Redirecting to payment…'
+                    : 'Submitting…'
+                  : mode === 'pay'
+                    ? '💳 Pay with card or mobile money'
+                    : 'Submit pledge'
+              }}
+            </button>
+          </form>
+        </template>
       </template>
     </div>
   </div>

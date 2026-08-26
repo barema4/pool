@@ -18,7 +18,7 @@ const activeTab = ref<Tab>('overview')
 const tabs: { key: Tab; label: string; icon: string }[] = [
   { key: 'overview', label: 'Overview', icon: '📋' },
   { key: 'budget', label: 'Budget', icon: '💰' },
-  { key: 'invoices', label: 'Invoices', icon: '🧾' },
+  { key: 'invoices', label: 'Links', icon: '🔗' },
   { key: 'transactions', label: 'Transactions', icon: '💳' },
   { key: 'contributors', label: 'Contributors', icon: '👥' },
 ]
@@ -427,11 +427,15 @@ const outlineButtonClass =
         </ul>
       </section>
 
-      <!-- INVOICES -->
+      <!-- LINKS -->
       <section v-else-if="activeTab === 'invoices'">
-        <div class="mb-4 flex justify-end">
-          <button type="button" :class="primaryButtonClass" @click="showInvoiceForm = !showInvoiceForm">
-            {{ showInvoiceForm ? 'Cancel' : '+ New invoice' }}
+        <div class="mb-4 flex items-center justify-between gap-3">
+          <p class="text-sm text-slate-500">
+            Generate a shareable payment link — permanent (reusable by anyone) or temporary (expires, single use).
+            Whoever opens it can pay now or just pledge.
+          </p>
+          <button type="button" :class="[primaryButtonClass, 'shrink-0']" @click="showInvoiceForm = !showInvoiceForm">
+            {{ showInvoiceForm ? 'Cancel' : '+ Generate link' }}
           </button>
         </div>
 
@@ -440,30 +444,29 @@ const outlineButtonClass =
           class="mb-4 space-y-2 rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm"
           @submit.prevent="handleCreateInvoice"
         >
-          <input v-model="invContributorName" placeholder="Contributor name (optional)" :class="inputClass" />
+          <input v-model="invContributorName" placeholder="Recipient name (optional)" :class="inputClass" />
           <input
             v-model="invContributorEmail"
             type="email"
-            placeholder="Contributor email (optional)"
+            placeholder="Recipient email (optional)"
             :class="inputClass"
           />
-          <input v-model="invContributorPhone" placeholder="Contributor phone (optional)" :class="inputClass" />
+          <input v-model="invContributorPhone" placeholder="Recipient phone (optional)" :class="inputClass" />
           <input
             v-model.number="invAmountRequested"
             type="number"
             step="0.01"
-            :placeholder="invIsPermanent ? 'Amount (optional for permanent links)' : 'Amount requested'"
-            :required="!invIsPermanent"
+            placeholder="Fixed amount (optional — leave blank to let the payer decide)"
             :class="inputClass"
           />
           <input v-model="invCategoryTag" placeholder="Category tag (optional)" :class="inputClass" />
           <label class="flex items-center gap-2 text-sm text-slate-700">
             <input v-model="invIsPermanent" type="checkbox" class="accent-babyblue-600" />
-            Permanent link (reusable, no expiry)
+            Permanent (reusable, no expiry) — leave unchecked for a temporary, one-time link
           </label>
           <p v-if="invoiceError" class="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{{ invoiceError }}</p>
           <button type="submit" :disabled="creatingInvoice" :class="primaryButtonClass">
-            {{ creatingInvoice ? 'Creating…' : 'Create invoice' }}
+            {{ creatingInvoice ? 'Generating…' : 'Generate link' }}
           </button>
         </form>
 
@@ -471,7 +474,7 @@ const outlineButtonClass =
           v-if="store.invoices.length === 0"
           class="rounded-2xl border border-dashed border-babyblue-200 bg-white/60 p-8 text-center text-sm text-slate-500"
         >
-          No invoices yet.
+          No links yet.
         </div>
         <ul v-else class="space-y-2">
           <li v-for="inv in store.invoices" :key="inv.id" class="rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm">
