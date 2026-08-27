@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import DashboardLayout from '@/components/layout/DashboardLayout.vue'
 import PayoutSettingsCard from '@/components/PayoutSettingsCard.vue'
+import ShareLinkReady from '@/components/ShareLinkReady.vue'
 import * as organizationsApi from '@/api/organizations'
 import * as eventsApi from '@/api/events'
 import { useOrganizationsStore } from '@/stores/organizations'
@@ -93,12 +94,18 @@ const eventTargetGoal = ref<number | null>(null)
 const eventIsPermanent = ref(false)
 const eventError = ref('')
 const creatingEvent = ref(false)
+const newEventLink = ref<EventRecord | null>(null)
+
+function toggleEventForm() {
+  showEventForm.value = !showEventForm.value
+  newEventLink.value = null
+}
 
 async function handleCreateEvent() {
   eventError.value = ''
   creatingEvent.value = true
   try {
-    await eventsApi.create({
+    newEventLink.value = await eventsApi.create({
       organizationId,
       title: eventTitle.value,
       description: eventDescription.value || undefined,
@@ -206,11 +213,18 @@ async function handleCreateEvent() {
             v-if="canManage"
             type="button"
             class="rounded-lg border border-babyblue-200 px-3 py-1 text-xs font-medium text-babyblue-700 transition-colors hover:bg-babyblue-100"
-            @click="showEventForm = !showEventForm"
+            @click="toggleEventForm"
           >
             {{ showEventForm ? 'Cancel' : '+ New event' }}
           </button>
         </div>
+
+        <ShareLinkReady
+          v-if="newEventLink && newEventLink.defaultLinkToken"
+          class="mb-3"
+          :token="newEventLink.defaultLinkToken"
+          :event-id="newEventLink.id"
+        />
 
         <form
           v-if="showEventForm"

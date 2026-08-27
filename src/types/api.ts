@@ -71,6 +71,9 @@ export interface EventRecord extends PayoutDetails {
   isPermanent: boolean
   status: EventStatus
   createdAt: string
+  // Present only on the response right after creation — the secureToken of
+  // the shareable link auto-generated alongside the event.
+  defaultLinkToken?: string
 }
 
 export interface EventDetail extends EventRecord {

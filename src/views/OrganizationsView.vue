@@ -2,9 +2,11 @@
 import { ref, onMounted } from 'vue'
 import { RouterLink } from 'vue-router'
 import DashboardLayout from '@/components/layout/DashboardLayout.vue'
+import ShareLinkReady from '@/components/ShareLinkReady.vue'
 import { useOrganizationsStore } from '@/stores/organizations'
+import * as eventsApi from '@/api/events'
 import { extractErrorMessage } from '@/api/client'
-import type { OrganizationType } from '@/types/api'
+import type { OrganizationType, EventRecord } from '@/types/api'
 
 const store = useOrganizationsStore()
 
@@ -13,6 +15,28 @@ const name = ref('')
 const type = ref<OrganizationType>('OTHER')
 const error = ref('')
 const submitting = ref(false)
+
+// Quick collection — skips organization setup entirely for a solo user.
+const showQuickForm = ref(false)
+const quickTitle = ref('')
+const quickError = ref('')
+const quickSubmitting = ref(false)
+const quickResult = ref<EventRecord | null>(null)
+
+async function handleQuickCreate() {
+  quickError.value = ''
+  quickSubmitting.value = true
+  try {
+    quickResult.value = await eventsApi.createQuick({ title: quickTitle.value })
+    quickTitle.value = ''
+    showQuickForm.value = false
+    await store.fetchMine()
+  } catch (err) {
+    quickError.value = extractErrorMessage(err)
+  } finally {
+    quickSubmitting.value = false
+  }
+}
 
 const orgTypes: OrganizationType[] = ['CHURCH', 'CHAMA', 'SACCO', 'COLLECTIVE', 'OTHER']
 const orgTypeEmoji: Record<OrganizationType, string> = {
@@ -49,11 +73,56 @@ async function handleCreate() {
       </div>
       <button
         type="button"
-        class="rounded-lg bg-babyblue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-babyblue-700"
+        class="rounded-lg border border-babyblue-200 px-4 py-2 text-sm font-medium text-babyblue-700 transition-colors hover:bg-babyblue-100"
         @click="showForm = !showForm"
       >
         {{ showForm ? 'Cancel' : '+ New organization' }}
       </button>
+    </div>
+
+    <!-- Quick collection: no organization step for a solo user -->
+    <ShareLinkReady
+      v-if="quickResult && quickResult.defaultLinkToken"
+      class="mb-6"
+      :token="quickResult.defaultLinkToken"
+      :event-id="quickResult.id"
+    />
+    <div v-else class="mb-6 rounded-2xl border border-babyblue-100 bg-white p-5 shadow-sm">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p class="font-medium text-slate-900">⚡ Just want to collect money for one thing?</p>
+          <p class="text-sm text-slate-500">Skip the organization setup — get a shareable link in one step.</p>
+        </div>
+        <button
+          type="button"
+          class="shrink-0 rounded-lg bg-babyblue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-babyblue-700"
+          @click="showQuickForm = !showQuickForm"
+        >
+          {{ showQuickForm ? 'Cancel' : '+ Quick collection' }}
+        </button>
+      </div>
+
+      <form
+        v-if="showQuickForm"
+        class="mt-4 space-y-2 border-t border-babyblue-100 pt-4"
+        @submit.prevent="handleQuickCreate"
+      >
+        <input
+          v-model="quickTitle"
+          type="text"
+          required
+          placeholder="What are you collecting for? e.g. Mum's hospital bill"
+          class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none"
+        />
+        <p v-if="quickError" class="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{{ quickError }}</p>
+        <button
+          type="submit"
+          :disabled="quickSubmitting"
+          class="rounded-lg bg-babyblue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-babyblue-700 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {{ quickSubmitting ? 'Creating…' : 'Create and get my link' }}
+        </button>
+      </form>
     </div>
 
     <form

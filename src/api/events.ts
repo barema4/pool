@@ -20,6 +20,10 @@ export function create(payload: {
   return apiClient.post<EventRecord>('/events', payload).then((r) => r.data)
 }
 
+export function createQuick(payload: { title: string; description?: string; targetGoal?: number }) {
+  return apiClient.post<EventRecord>('/events/quick', payload).then((r) => r.data)
+}
+
 export function update(
   eventId: string,
   payload: Partial<{

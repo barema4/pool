@@ -25,8 +25,6 @@ const banksError = ref('')
 
 const bankCode = ref('')
 const accountNumber = ref('')
-const resolvedName = ref('')
-const resolving = ref(false)
 const resolveError = ref('')
 const saving = ref(false)
 
@@ -45,50 +43,37 @@ async function loadBanks() {
 
 function startEditing() {
   editing.value = true
-  resolvedName.value = ''
   resolveError.value = ''
   loadBanks()
-}
-
-function resetAccountEntry() {
-  resolvedName.value = ''
-  resolveError.value = ''
-}
-
-async function handleVerify() {
-  resolveError.value = ''
-  resolving.value = true
-  try {
-    const result = await payoutsApi.resolveAccount({
-      bankCode: bankCode.value,
-      accountNumber: accountNumber.value,
-    })
-    resolvedName.value = result.accountName
-  } catch (err) {
-    resolveError.value = extractErrorMessage(err)
-  } finally {
-    resolving.value = false
-  }
 }
 
 function bankNameFor(code: string) {
   return banks.value.find((b) => b.code === code)?.name ?? ''
 }
 
+// Single "Save" step: verify the account with Paystack (so a typo never
+// silently becomes the payout destination) and commit it in one click,
+// rather than making the user Verify then Save as two separate actions.
 async function handleSave() {
+  resolveError.value = ''
   saving.value = true
   try {
+    await payoutsApi.resolveAccount({
+      bankCode: bankCode.value,
+      accountNumber: accountNumber.value,
+    })
     emit('submit', {
       bankCode: bankCode.value,
       bankName: bankNameFor(bankCode.value),
       accountNumber: accountNumber.value,
     })
-  } finally {
-    saving.value = false
     editing.value = false
     bankCode.value = ''
     accountNumber.value = ''
-    resolvedName.value = ''
+  } catch (err) {
+    resolveError.value = extractErrorMessage(err)
+  } finally {
+    saving.value = false
   }
 }
 
@@ -145,45 +130,23 @@ const inputClass =
       <p v-if="banksError" class="mb-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">{{ banksError }}</p>
 
       <div v-else class="space-y-2">
-        <select
-          v-model="bankCode"
-          :class="inputClass"
-          @change="resetAccountEntry"
-        >
+        <select v-model="bankCode" :class="inputClass">
           <option value="" disabled>Select your bank…</option>
           <option v-for="b in banks" :key="b.code" :value="b.code">{{ b.name }}</option>
         </select>
 
-        <input
-          v-model="accountNumber"
-          placeholder="Account number"
-          :class="inputClass"
-          @input="resetAccountEntry"
-        />
+        <input v-model="accountNumber" placeholder="Account number" :class="inputClass" />
 
-        <div v-if="resolvedName" class="rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">
-          ✓ Verified: {{ resolvedName }}
-        </div>
         <p v-if="resolveError" class="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{{ resolveError }}</p>
 
         <div class="flex gap-2">
           <button
-            v-if="!resolvedName"
             type="button"
-            :disabled="!bankCode || !accountNumber || resolving"
-            class="rounded-lg bg-babyblue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-babyblue-700 disabled:cursor-not-allowed disabled:opacity-50"
-            @click="handleVerify"
-          >
-            {{ resolving ? 'Verifying…' : 'Verify account' }}
-          </button>
-          <button
-            v-else
-            type="button"
-            :disabled="saving"
+            :disabled="!bankCode || !accountNumber || saving"
             class="rounded-lg bg-babyblue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-babyblue-700 disabled:cursor-not-allowed disabled:opacity-50"
             @click="handleSave"
           >
-            {{ saving ? 'Saving…' : 'Save payout details' }}
+            {{ saving ? 'Verifying and saving…' : 'Save bank account' }}
           </button>
           <button
             v-if="current.payoutBankName"
