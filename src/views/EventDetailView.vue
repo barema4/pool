@@ -160,6 +160,7 @@ function categoryProgressPct(allocated: string, estimated: string): number {
 
 // --- Invoices ---
 const showInvoiceForm = ref(false)
+const showLinkCustomize = ref(false)
 const invContributorName = ref('')
 const invContributorEmail = ref('')
 const invContributorPhone = ref('')
@@ -204,6 +205,7 @@ async function handleCreateInvoice() {
     invCategoryTag.value = ''
     invIsPermanent.value = false
     showInvoiceForm.value = false
+    showLinkCustomize.value = false
     await store.refreshInvoices()
   } catch (err) {
     invoiceError.value = extractErrorMessage(err)
@@ -464,29 +466,41 @@ const outlineButtonClass =
 
         <form
           v-if="showInvoiceForm"
-          class="mb-4 space-y-2 rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm"
+          class="mb-4 space-y-3 rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm"
           @submit.prevent="handleCreateInvoice"
         >
-          <input v-model="invContributorName" placeholder="Recipient name (optional)" :class="inputClass" />
-          <input
-            v-model="invContributorEmail"
-            type="email"
-            placeholder="Recipient email (optional)"
-            :class="inputClass"
-          />
-          <input v-model="invContributorPhone" placeholder="Recipient phone (optional)" :class="inputClass" />
-          <input
-            v-model.number="invAmountRequested"
-            type="number"
-            step="0.01"
-            placeholder="Fixed amount (optional — leave blank to let the payer decide)"
-            :class="inputClass"
-          />
-          <input v-model="invCategoryTag" placeholder="Category tag (optional)" :class="inputClass" />
           <label class="flex items-center gap-2 text-sm text-slate-700">
             <input v-model="invIsPermanent" type="checkbox" class="accent-babyblue-600" />
             Permanent (reusable, no expiry) — leave unchecked for a temporary, one-time link
           </label>
+
+          <button
+            type="button"
+            class="block text-xs font-medium text-babyblue-700 hover:underline"
+            @click="showLinkCustomize = !showLinkCustomize"
+          >
+            {{ showLinkCustomize ? '− Hide options' : '+ Customize (recipient, amount, category)' }}
+          </button>
+
+          <div v-if="showLinkCustomize" class="space-y-2 border-t border-babyblue-100 pt-3">
+            <input v-model="invContributorName" placeholder="Recipient name (optional)" :class="inputClass" />
+            <input
+              v-model="invContributorEmail"
+              type="email"
+              placeholder="Recipient email (optional)"
+              :class="inputClass"
+            />
+            <input v-model="invContributorPhone" placeholder="Recipient phone (optional)" :class="inputClass" />
+            <input
+              v-model.number="invAmountRequested"
+              type="number"
+              step="0.01"
+              placeholder="Fixed amount (optional — leave blank to let the payer decide)"
+              :class="inputClass"
+            />
+            <input v-model="invCategoryTag" placeholder="Category tag (optional)" :class="inputClass" />
+          </div>
+
           <p v-if="invoiceError" class="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{{ invoiceError }}</p>
           <button type="submit" :disabled="creatingInvoice" :class="primaryButtonClass">
             {{ creatingInvoice ? 'Generating…' : 'Generate link' }}
