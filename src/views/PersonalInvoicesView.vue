@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import DashboardLayout from '@/components/layout/DashboardLayout.vue'
+import PayoutSettingsCard from '@/components/PayoutSettingsCard.vue'
 import * as personalInvoicesApi from '@/api/personalInvoices'
 import * as usersApi from '@/api/users'
 import { extractErrorMessage } from '@/api/client'
@@ -12,10 +13,7 @@ const loading = ref(true)
 const loadError = ref('')
 
 const profile = ref<UserProfile | null>(null)
-const walletInput = ref('')
-const savingWallet = ref(false)
-const walletError = ref('')
-const walletSaved = ref(false)
+const payoutError = ref('')
 
 const showForm = ref(false)
 const recipientName = ref('')
@@ -49,7 +47,6 @@ async function loadAll() {
     const [invoiceList, me] = await Promise.all([personalInvoicesApi.listMine(), usersApi.getMe()])
     invoices.value = invoiceList
     profile.value = me
-    walletInput.value = me.gatewayWalletId ?? ''
   } catch (err) {
     loadError.value = extractErrorMessage(err)
   } finally {
@@ -59,17 +56,12 @@ async function loadAll() {
 
 onMounted(loadAll)
 
-async function handleSaveWallet() {
-  walletError.value = ''
-  savingWallet.value = true
+async function handleSetPayout(payload: { bankCode: string; bankName: string; accountNumber: string }) {
+  payoutError.value = ''
   try {
-    profile.value = await usersApi.updateMe({ gatewayWalletId: walletInput.value || undefined })
-    walletSaved.value = true
-    setTimeout(() => (walletSaved.value = false), 2000)
+    profile.value = await usersApi.setPayout(payload)
   } catch (err) {
-    walletError.value = extractErrorMessage(err)
-  } finally {
-    savingWallet.value = false
+    payoutError.value = extractErrorMessage(err)
   }
 }
 
@@ -146,27 +138,20 @@ const outlineButtonClass =
     <div v-else-if="loadError" class="text-sm text-red-600">{{ loadError }}</div>
 
     <template v-else>
-      <!-- Payout wallet -->
-      <section class="mb-8 rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm">
-        <h2 class="mb-1 text-sm font-semibold tracking-wide text-babyblue-700 uppercase">Payout wallet</h2>
-        <p class="mb-3 text-xs text-slate-500">
-          Your Paystack subaccount code — this is where money from your invoices lands.
-        </p>
-        <div class="flex flex-wrap items-center gap-2">
-          <input
-            v-model="walletInput"
-            placeholder="e.g. ACCT_xxxxxxxx"
-            :class="[inputClass, 'max-w-xs']"
-          />
-          <button type="button" :disabled="savingWallet" :class="primaryButtonClass" @click="handleSaveWallet">
-            {{ savingWallet ? 'Saving…' : walletSaved ? '✓ Saved' : 'Save' }}
-          </button>
-        </div>
-        <p v-if="walletError" class="mt-2 text-sm text-red-600">{{ walletError }}</p>
-        <p v-if="!profile?.gatewayWalletId" class="mt-2 text-xs text-amber-600">
+      <!-- Payout bank account -->
+      <div class="mb-8">
+        <PayoutSettingsCard
+          v-if="profile"
+          :current="profile"
+          title="Payout bank account"
+          description="This is where money from your invoices lands."
+          @submit="handleSetPayout"
+        />
+        <p v-if="payoutError" class="mt-2 text-sm text-red-600">{{ payoutError }}</p>
+        <p v-if="profile && !profile.payoutBankName" class="mt-2 text-xs text-amber-600">
           Set this before sending an invoice, or payments will have nowhere to settle.
         </p>
-      </section>
+      </div>
 
       <!-- Invoices -->
       <div class="mb-3 flex items-center justify-between">

@@ -17,8 +17,18 @@ export interface AuthUser {
   name: string
 }
 
-export interface UserProfile extends AuthUser {
-  gatewayWalletId: string | null
+export interface Bank {
+  name: string
+  code: string
+}
+
+export interface PayoutDetails {
+  payoutBankName: string | null
+  payoutAccountName: string | null
+  payoutAccountLast4: string | null
+}
+
+export interface UserProfile extends AuthUser, PayoutDetails {
   createdAt: string
 }
 
@@ -31,11 +41,10 @@ export interface AuthResponse extends TokenPair {
   user: AuthUser
 }
 
-export interface Organization {
+export interface Organization extends PayoutDetails {
   id: string
   name: string
   type: OrganizationType
-  gatewayWalletId: string | null
   createdAt: string
 }
 
@@ -52,7 +61,7 @@ export interface OrganizationMember {
   user: { id: string; name: string; email: string }
 }
 
-export interface EventRecord {
+export interface EventRecord extends PayoutDetails {
   id: string
   organizationId: string | null
   title: string
@@ -60,7 +69,6 @@ export interface EventRecord {
   coverImageUrl: string | null
   targetGoal: string | null
   isPermanent: boolean
-  gatewayWalletId: string | null
   status: EventStatus
   createdAt: string
 }

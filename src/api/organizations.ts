@@ -26,3 +26,12 @@ export function create(payload: { name: string; type: Organization['type'] }) {
 export function inviteMember(organizationId: string, payload: { email: string; role: OrgRole }) {
   return apiClient.post(`/organizations/${organizationId}/members`, payload).then((r) => r.data)
 }
+
+export function setPayout(
+  organizationId: string,
+  payload: { bankCode: string; bankName: string; accountNumber: string },
+) {
+  return apiClient
+    .patch<Organization>(`/organizations/${organizationId}/payout`, payload)
+    .then((r) => r.data)
+}

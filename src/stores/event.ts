@@ -63,6 +63,12 @@ export const useEventStore = defineStore('event', () => {
     event.value = { ...event.value, ...updated }
   }
 
+  async function setPayout(payload: Parameters<typeof eventsApi.setPayout>[1]) {
+    if (!event.value) return
+    const updated = await eventsApi.setPayout(event.value.id, payload)
+    event.value = { ...event.value, ...updated }
+  }
+
   function reset() {
     event.value = null
     budgetCategories.value = []
@@ -82,6 +88,7 @@ export const useEventStore = defineStore('event', () => {
     refreshTransactions,
     updateEvent,
     updateStatus,
+    setPayout,
     reset,
   }
 })

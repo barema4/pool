@@ -1,5 +1,5 @@
 import { apiClient } from './client'
-import type { EventRecord, EventDetail, EventStatus } from '@/types/api'
+import type { EventRecord, EventDetail, EventStatus, PayoutDetails } from '@/types/api'
 
 export function listForOrganization(organizationId: string) {
   return apiClient.get<EventRecord[]>('/events', { params: { organizationId } }).then((r) => r.data)
@@ -27,7 +27,6 @@ export function update(
     description: string
     coverImageUrl: string
     targetGoal: number
-    gatewayWalletId: string
   }>,
 ) {
   return apiClient.patch<EventRecord>(`/events/${eventId}`, payload).then((r) => r.data)
@@ -35,4 +34,13 @@ export function update(
 
 export function updateStatus(eventId: string, status: EventStatus) {
   return apiClient.patch<EventRecord>(`/events/${eventId}/status`, { status }).then((r) => r.data)
+}
+
+export function setPayout(
+  eventId: string,
+  payload: { bankCode: string; bankName: string; accountNumber: string },
+) {
+  return apiClient
+    .patch<EventRecord & PayoutDetails>(`/events/${eventId}/payout`, payload)
+    .then((r) => r.data)
 }

@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import DashboardLayout from '@/components/layout/DashboardLayout.vue'
+import PayoutSettingsCard from '@/components/PayoutSettingsCard.vue'
 import { useEventStore } from '@/stores/event'
 import * as budgetCategoriesApi from '@/api/budgetCategories'
 import * as invoicesApi from '@/api/invoices'
@@ -83,6 +84,17 @@ async function handleStatusChange(status: EventStatus) {
     await store.updateStatus(status)
   } catch (err) {
     overviewError.value = extractErrorMessage(err)
+  }
+}
+
+const payoutError = ref('')
+
+async function handleSetPayout(payload: { bankCode: string; bankName: string; accountNumber: string }) {
+  payoutError.value = ''
+  try {
+    await store.setPayout(payload)
+  } catch (err) {
+    payoutError.value = extractErrorMessage(err)
   }
 }
 
@@ -350,6 +362,17 @@ const outlineButtonClass =
           >
             <option v-for="s in statuses" :key="s" :value="s">{{ s }}</option>
           </select>
+        </div>
+
+        <div class="border-t border-babyblue-100 pt-4">
+          <PayoutSettingsCard
+            :current="store.event"
+            title="Payout override (optional)"
+            description="Leave unset to use the organization's payout bank account for this event."
+            :auto-edit-when-empty="false"
+            @submit="handleSetPayout"
+          />
+          <p v-if="payoutError" class="mt-2 text-sm text-red-600">{{ payoutError }}</p>
         </div>
       </section>
 

@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import DashboardLayout from '@/components/layout/DashboardLayout.vue'
+import PayoutSettingsCard from '@/components/PayoutSettingsCard.vue'
 import * as organizationsApi from '@/api/organizations'
 import * as eventsApi from '@/api/events'
 import { useOrganizationsStore } from '@/stores/organizations'
@@ -54,6 +55,17 @@ const inviteRole = ref<OrgRole>('TREASURER')
 const inviteError = ref('')
 const inviting = ref(false)
 const roles: OrgRole[] = ['MAIN_ORGANIZER', 'TREASURER', 'AUDITOR']
+
+const payoutError = ref('')
+
+async function handleSetPayout(payload: { bankCode: string; bankName: string; accountNumber: string }) {
+  payoutError.value = ''
+  try {
+    organization.value = await organizationsApi.setPayout(organizationId, payload)
+  } catch (err) {
+    payoutError.value = extractErrorMessage(err)
+  }
+}
 
 async function handleInvite() {
   inviteError.value = ''
@@ -115,6 +127,17 @@ async function handleCreateEvent() {
     <template v-else-if="organization">
       <h1 class="text-2xl font-semibold text-slate-900">{{ organization.name }}</h1>
       <p class="mb-6 text-sm text-slate-500">{{ organization.type }}</p>
+
+      <!-- Payout bank account -->
+      <div v-if="canManage" class="mb-8">
+        <PayoutSettingsCard
+          :current="organization"
+          title="Payout bank account"
+          description="Where money from this organization's events lands, unless an event sets its own override."
+          @submit="handleSetPayout"
+        />
+        <p v-if="payoutError" class="mt-2 text-sm text-red-600">{{ payoutError }}</p>
+      </div>
 
       <!-- Members -->
       <section class="mb-8">
