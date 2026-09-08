@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { RouterLink, useRouter } from 'vue-router'
+import { ref, onMounted } from 'vue'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import * as authApi from '@/api/auth'
+import * as publicApi from '@/api/public'
 import { useAuthStore } from '@/stores/auth'
 import { extractErrorMessage } from '@/api/client'
 
@@ -13,6 +14,22 @@ const loading = ref(false)
 
 const auth = useAuthStore()
 const router = useRouter()
+const route = useRoute()
+
+const inviteToken = (route.query.invite as string) || undefined
+const inviteBanner = ref<{ organizationName: string; role: string } | null>(null)
+
+onMounted(async () => {
+  if (!inviteToken) return
+  try {
+    const invitation = await publicApi.getOrganizationInvitation(inviteToken)
+    inviteBanner.value = { organizationName: invitation.organizationName, role: invitation.role }
+    email.value = invitation.email
+  } catch {
+    // Bad/expired/consumed invite token — fall back to a normal, unprefilled
+    // registration; never block signup over a stale invite link.
+  }
+})
 
 async function handleSubmit() {
   error.value = ''
@@ -22,6 +39,7 @@ async function handleSubmit() {
       name: name.value,
       email: email.value,
       password: password.value,
+      inviteToken,
     })
     auth.setSession(user, { accessToken, refreshToken })
     router.push({ name: 'organizations' })
@@ -47,6 +65,15 @@ async function handleSubmit() {
         <h1 class="text-xl font-semibold text-slate-900">Create your account</h1>
         <p class="mt-1 text-sm text-slate-500">Start pooling contributions in minutes</p>
       </div>
+
+      <p
+        v-if="inviteBanner"
+        class="mb-4 rounded-lg bg-babyblue-50 px-3 py-2 text-sm text-babyblue-700"
+      >
+        You're invited to join <strong>{{ inviteBanner.organizationName }}</strong> as
+        {{ inviteBanner.role }}.
+      </p>
+
       <form class="space-y-4" @submit.prevent="handleSubmit">
         <div>
           <label class="mb-1 block text-sm font-medium text-slate-700">Name</label>
@@ -63,7 +90,9 @@ async function handleSubmit() {
             v-model="email"
             type="email"
             required
-            class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm text-slate-900 transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none"
+            :readonly="!!inviteBanner"
+            class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm text-slate-900 transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none disabled:bg-babyblue-50"
+            :class="{ 'bg-babyblue-50 text-slate-500': inviteBanner }"
           />
         </div>
         <div>

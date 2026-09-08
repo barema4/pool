@@ -1,5 +1,12 @@
 import { apiClient } from './client'
-import type { Organization, OrganizationWithRole, OrganizationMember, OrgRole } from '@/types/api'
+import type {
+  Organization,
+  OrganizationWithRole,
+  OrganizationMember,
+  OrgRole,
+  InviteMemberResult,
+  AuditLogEntry,
+} from '@/types/api'
 
 export function listMine() {
   return apiClient.get<OrganizationWithRole[]>('/organizations').then((r) => r.data)
@@ -24,7 +31,15 @@ export function create(payload: { name: string; type: Organization['type'] }) {
 }
 
 export function inviteMember(organizationId: string, payload: { email: string; role: OrgRole }) {
-  return apiClient.post(`/organizations/${organizationId}/members`, payload).then((r) => r.data)
+  return apiClient
+    .post<InviteMemberResult>(`/organizations/${organizationId}/members`, payload)
+    .then((r) => r.data)
+}
+
+export function getAuditLog(organizationId: string) {
+  return apiClient
+    .get<AuditLogEntry[]>(`/organizations/${organizationId}/audit-log`)
+    .then((r) => r.data)
 }
 
 export function setPayout(

@@ -49,6 +49,13 @@ function handleLogout() {
           >
             Invoices
           </RouterLink>
+          <RouterLink
+            :to="{ name: 'settings' }"
+            class="rounded-lg px-3 py-1.5 text-sm font-medium text-slate-600 transition-colors hover:bg-babyblue-100 hover:text-babyblue-700"
+            active-class="bg-babyblue-100 text-babyblue-700"
+          >
+            Settings
+          </RouterLink>
         </nav>
         <div class="flex items-center gap-3 text-sm text-slate-600">
           <div v-if="auth.user" class="flex items-center gap-2">

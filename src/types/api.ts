@@ -61,6 +61,20 @@ export interface OrganizationMember {
   user: { id: string; name: string; email: string }
 }
 
+// Returned by POST /organizations/:id/members — a raw OrganizationMember when
+// the invited email already has an account, or this shape when it doesn't
+// (an OrganizationInvitation was created and an accept-link emailed instead).
+export type InviteMemberResult = OrganizationMember | { status: 'invited'; email: string; role: OrgRole }
+
+export interface AuditLogEntry {
+  id: string
+  action: string
+  timestamp: string
+  payloadSnapshot: Record<string, unknown> | null
+  user: { id: string; name: string; email: string } | null
+  event: { id: string; title: string } | null
+}
+
 export interface EventRecord extends PayoutDetails {
   id: string
   organizationId: string | null

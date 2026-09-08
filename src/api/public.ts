@@ -5,6 +5,7 @@ import type {
   ContributorSummary,
   Invoice,
   Receipt,
+  OrgRole,
 } from '@/types/api'
 
 export function getInvoiceByToken(token: string) {
@@ -43,5 +44,13 @@ export function getPublicContributors(eventId: string) {
 export function getReceipt(reference: string) {
   return publicApiClient
     .get<Receipt>('/public/receipts', { params: { reference } })
+    .then((r) => r.data)
+}
+
+export function getOrganizationInvitation(token: string) {
+  return publicApiClient
+    .get<{ organizationName: string; role: OrgRole; email: string }>(
+      `/public/organization-invitations/${token}`,
+    )
     .then((r) => r.data)
 }

@@ -7,6 +7,16 @@ const router = createRouter({
     { path: '/', redirect: '/app/organizations' },
     { path: '/login', name: 'login', component: () => import('@/views/LoginView.vue') },
     { path: '/register', name: 'register', component: () => import('@/views/RegisterView.vue') },
+    {
+      path: '/forgot-password',
+      name: 'forgot-password',
+      component: () => import('@/views/ForgotPasswordView.vue'),
+    },
+    {
+      path: '/reset-password',
+      name: 'reset-password',
+      component: () => import('@/views/ResetPasswordView.vue'),
+    },
 
     // Public, payer-facing — no auth required.
     { path: '/pay/:token', name: 'pay', component: () => import('@/views/PayView.vue') },
@@ -50,6 +60,12 @@ const router = createRouter({
       path: '/app/personal-invoices',
       name: 'personal-invoices',
       component: () => import('@/views/PersonalInvoicesView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/app/settings',
+      name: 'settings',
+      component: () => import('@/views/SettingsView.vue'),
       meta: { requiresAuth: true },
     },
 

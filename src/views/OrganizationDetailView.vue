@@ -9,7 +9,8 @@ import * as eventsApi from '@/api/events'
 import { useOrganizationsStore } from '@/stores/organizations'
 import { extractErrorMessage } from '@/api/client'
 import { statusBadgeClass } from '@/lib/format'
-import type { Organization, OrganizationMember, EventRecord, OrgRole } from '@/types/api'
+import type { Organization, OrganizationMember, EventRecord, OrgRole, AuditLogEntry } from '@/types/api'
+import { formatDate } from '@/lib/format'
 
 const route = useRoute()
 const organizationId = route.params.organizationId as string
@@ -18,6 +19,7 @@ const orgsStore = useOrganizationsStore()
 const organization = ref<Organization | null>(null)
 const members = ref<OrganizationMember[]>([])
 const events = ref<EventRecord[]>([])
+const auditLog = ref<AuditLogEntry[]>([])
 const loading = ref(true)
 const loadError = ref('')
 
@@ -29,14 +31,16 @@ async function loadAll() {
   loading.value = true
   loadError.value = ''
   try {
-    const [org, memberList, eventList] = await Promise.all([
+    const [org, memberList, eventList, auditEntries] = await Promise.all([
       organizationsApi.getOne(organizationId),
       organizationsApi.listMembers(organizationId),
       eventsApi.listForOrganization(organizationId),
+      organizationsApi.getAuditLog(organizationId),
     ])
     organization.value = org
     members.value = memberList
     events.value = eventList
+    auditLog.value = auditEntries
   } catch (err) {
     loadError.value = extractErrorMessage(err)
   } finally {
@@ -54,6 +58,7 @@ const showInviteForm = ref(false)
 const inviteEmail = ref('')
 const inviteRole = ref<OrgRole>('TREASURER')
 const inviteError = ref('')
+const inviteSuccess = ref('')
 const inviting = ref(false)
 const roles: OrgRole[] = ['MAIN_ORGANIZER', 'TREASURER', 'AUDITOR']
 
@@ -70,15 +75,22 @@ async function handleSetPayout(payload: { bankCode: string; bankName: string; ac
 
 async function handleInvite() {
   inviteError.value = ''
+  inviteSuccess.value = ''
   inviting.value = true
   try {
-    await organizationsApi.inviteMember(organizationId, {
+    const result = await organizationsApi.inviteMember(organizationId, {
       email: inviteEmail.value,
       role: inviteRole.value,
     })
     inviteEmail.value = ''
     showInviteForm.value = false
-    members.value = await organizationsApi.listMembers(organizationId)
+    if ('status' in result && result.status === 'invited') {
+      // No account existed yet — an invitation email was sent instead of a
+      // membership being created directly, so there's nothing new to refetch.
+      inviteSuccess.value = `Invitation email sent to ${result.email}.`
+    } else {
+      members.value = await organizationsApi.listMembers(organizationId)
+    }
   } catch (err) {
     inviteError.value = extractErrorMessage(err)
   } finally {
@@ -187,6 +199,9 @@ async function handleCreateEvent() {
             {{ inviting ? 'Inviting…' : 'Send invite' }}
           </button>
         </form>
+        <p v-if="inviteSuccess" class="mb-3 rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">
+          {{ inviteSuccess }}
+        </p>
 
         <ul class="space-y-1.5">
           <li
@@ -293,6 +308,31 @@ async function handleCreateEvent() {
                 >{{ evt.status }}</span
               >
             </RouterLink>
+          </li>
+        </ul>
+      </section>
+
+      <!-- Audit log -->
+      <section class="mt-8">
+        <h2 class="mb-3 text-sm font-semibold tracking-wide text-babyblue-700 uppercase">Audit log</h2>
+        <div
+          v-if="auditLog.length === 0"
+          class="rounded-2xl border border-dashed border-babyblue-200 bg-white/60 p-8 text-center text-sm text-slate-500"
+        >
+          No activity recorded yet.
+        </div>
+        <ul v-else class="space-y-1.5">
+          <li
+            v-for="entry in auditLog"
+            :key="entry.id"
+            class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-babyblue-100 bg-white px-4 py-2.5 text-sm shadow-sm"
+          >
+            <span class="min-w-0 break-words">
+              <span class="font-medium text-slate-900">{{ entry.action }}</span>
+              <span class="text-slate-400"> by {{ entry.user?.name ?? 'system' }}</span>
+              <span v-if="entry.event" class="text-slate-400"> on {{ entry.event.title }}</span>
+            </span>
+            <span class="shrink-0 text-xs text-slate-400">{{ formatDate(entry.timestamp) }}</span>
           </li>
         </ul>
       </section>

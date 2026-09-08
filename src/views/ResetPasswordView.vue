@@ -2,29 +2,29 @@
 import { ref } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import * as authApi from '@/api/auth'
-import { useAuthStore } from '@/stores/auth'
 import { extractErrorMessage } from '@/api/client'
 
-const email = ref('')
-const password = ref('')
-const error = ref('')
-const loading = ref(false)
-
-const auth = useAuthStore()
-const router = useRouter()
 const route = useRoute()
+const router = useRouter()
+
+const token = (route.query.token as string) ?? ''
+const newPassword = ref('')
+const confirmPassword = ref('')
+const error = ref('')
+const success = ref(false)
+const loading = ref(false)
 
 async function handleSubmit() {
   error.value = ''
+  if (newPassword.value !== confirmPassword.value) {
+    error.value = 'Passwords do not match'
+    return
+  }
   loading.value = true
   try {
-    const { user, accessToken, refreshToken } = await authApi.login({
-      email: email.value,
-      password: password.value,
-    })
-    auth.setSession(user, { accessToken, refreshToken })
-    const redirect = (route.query.redirect as string) || '/app/organizations'
-    router.push(redirect)
+    await authApi.resetPassword({ token, newPassword: newPassword.value })
+    success.value = true
+    setTimeout(() => router.push({ name: 'login' }), 2000)
   } catch (err) {
     error.value = extractErrorMessage(err)
   } finally {
@@ -44,32 +44,36 @@ async function handleSubmit() {
         >
           OP
         </span>
-        <h1 class="text-xl font-semibold text-slate-900">Welcome back</h1>
-        <p class="mt-1 text-sm text-slate-500">Log in to your OpenPool account</p>
+        <h1 class="text-xl font-semibold text-slate-900">Choose a new password</h1>
       </div>
-      <form class="space-y-4" @submit.prevent="handleSubmit">
+
+      <div v-if="!token" class="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
+        This reset link is missing its token.
+        <RouterLink :to="{ name: 'forgot-password' }" class="font-medium underline"
+          >Request a new one</RouterLink
+        >
+      </div>
+      <p v-else-if="success" class="rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">
+        Password reset successfully. Redirecting to log in…
+      </p>
+      <form v-else class="space-y-4" @submit.prevent="handleSubmit">
         <div>
-          <label class="mb-1 block text-sm font-medium text-slate-700">Email</label>
+          <label class="mb-1 block text-sm font-medium text-slate-700">New password</label>
           <input
-            v-model="email"
-            type="email"
+            v-model="newPassword"
+            type="password"
             required
+            minlength="8"
             class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm text-slate-900 transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none"
           />
         </div>
         <div>
-          <div class="mb-1 flex items-center justify-between">
-            <label class="block text-sm font-medium text-slate-700">Password</label>
-            <RouterLink
-              :to="{ name: 'forgot-password' }"
-              class="text-xs font-medium text-babyblue-600 hover:text-babyblue-700"
-              >Forgot password?</RouterLink
-            >
-          </div>
+          <label class="mb-1 block text-sm font-medium text-slate-700">Confirm new password</label>
           <input
-            v-model="password"
+            v-model="confirmPassword"
             type="password"
             required
+            minlength="8"
             class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm text-slate-900 transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none"
           />
         </div>
@@ -79,15 +83,9 @@ async function handleSubmit() {
           :disabled="loading"
           class="w-full rounded-lg bg-babyblue-600 px-3 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-babyblue-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {{ loading ? 'Logging in…' : 'Log in' }}
+          {{ loading ? 'Resetting…' : 'Reset password' }}
         </button>
       </form>
-      <p class="mt-6 text-center text-sm text-slate-500">
-        No account?
-        <RouterLink :to="{ name: 'register' }" class="font-medium text-babyblue-600 hover:text-babyblue-700"
-          >Register</RouterLink
-        >
-      </p>
     </div>
   </div>
 </template>
