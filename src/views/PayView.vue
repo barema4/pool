@@ -4,7 +4,7 @@ import { useRoute } from 'vue-router'
 import * as publicApi from '@/api/public'
 import { extractErrorMessage } from '@/api/client'
 import { formatMoney, copyToClipboard } from '@/lib/format'
-import type { PublicInvoiceView, Invoice } from '@/types/api'
+import type { PublicInvoiceView, Invoice, PaymentMethod } from '@/types/api'
 
 const route = useRoute()
 const token = route.params.token as string
@@ -22,6 +22,7 @@ const phone = ref('')
 const amount = ref<number | null>(null)
 const submitError = ref('')
 const submitting = ref(false)
+const selectedMethod = ref<PaymentMethod>('card')
 const pledgeCreated = ref<Invoice | null>(null)
 const copiedPledgeLink = ref(false)
 
@@ -62,6 +63,7 @@ async function handlePay() {
       amount: amount.value ?? undefined,
       contributorName: name.value || undefined,
       contributorPhone: phone.value || undefined,
+      paymentMethod: selectedMethod.value,
     })
     window.location.href = result.authorizationUrl
   } catch (err) {
@@ -258,20 +260,31 @@ async function copyPledgeLink() {
 
             <p v-if="submitError" class="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{{ submitError }}</p>
 
+            <div v-if="mode === 'pay'" class="grid grid-cols-2 gap-2">
+              <button
+                type="submit"
+                :disabled="submitting"
+                class="rounded-lg bg-babyblue-600 px-3 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-babyblue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                @click="selectedMethod = 'card'"
+              >
+                {{ submitting && selectedMethod === 'card' ? 'Redirecting…' : '💳 Pay with Card' }}
+              </button>
+              <button
+                type="submit"
+                :disabled="submitting"
+                class="rounded-lg bg-babyblue-600 px-3 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-babyblue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                @click="selectedMethod = 'mobile_money'"
+              >
+                {{ submitting && selectedMethod === 'mobile_money' ? 'Redirecting…' : '📱 Pay with M-Pesa' }}
+              </button>
+            </div>
             <button
+              v-else
               type="submit"
               :disabled="submitting"
               class="w-full rounded-lg bg-babyblue-600 px-3 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-babyblue-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {{
-                submitting
-                  ? mode === 'pay'
-                    ? 'Redirecting to payment…'
-                    : 'Submitting…'
-                  : mode === 'pay'
-                    ? '💳 Pay with card or mobile money'
-                    : 'Submit pledge'
-              }}
+              {{ submitting ? 'Submitting…' : 'Submit pledge' }}
             </button>
           </form>
         </template>

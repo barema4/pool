@@ -8,6 +8,10 @@ export type EventStatus = 'DRAFT' | 'ACTIVE' | 'CLOSED' | 'ARCHIVED'
 export type InvoiceStatus = 'PENDING' | 'PARTIALLY_PAID' | 'PAID' | 'EXPIRED'
 export type InvoiceSource = 'ORGANIZER' | 'PUBLIC_PLEDGE'
 export type PaymentRail = 'MOBILE_MONEY' | 'CARD'
+// What the payer picks on our own pay page — passed to Paystack so its
+// hosted checkout skips straight to that channel instead of showing its own
+// picker.
+export type PaymentMethod = 'card' | 'mobile_money'
 export type TransactionStatus = 'PENDING' | 'SUCCESS' | 'FAILED'
 export type PersonalInvoiceStatus = 'PENDING' | 'PAID' | 'EXPIRED' | 'CANCELLED'
 

@@ -6,6 +6,7 @@ import type {
   Invoice,
   Receipt,
   OrgRole,
+  PaymentMethod,
 } from '@/types/api'
 
 export function getInvoiceByToken(token: string) {
@@ -14,7 +15,13 @@ export function getInvoiceByToken(token: string) {
 
 export function initializeCheckout(
   token: string,
-  payload: { email: string; amount?: number; contributorName?: string; contributorPhone?: string },
+  payload: {
+    email: string
+    amount?: number
+    contributorName?: string
+    contributorPhone?: string
+    paymentMethod?: PaymentMethod
+  },
 ) {
   return publicApiClient
     .post<CheckoutResult>(`/payments/checkout/${token}`, payload)

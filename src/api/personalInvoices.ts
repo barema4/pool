@@ -1,5 +1,11 @@
 import { apiClient, publicApiClient } from './client'
-import type { PersonalInvoice, PublicPersonalInvoiceView, ShareLinks, CheckoutResult } from '@/types/api'
+import type {
+  PersonalInvoice,
+  PublicPersonalInvoiceView,
+  ShareLinks,
+  CheckoutResult,
+  PaymentMethod,
+} from '@/types/api'
 
 export function listMine() {
   return apiClient.get<PersonalInvoice[]>('/personal-invoices').then((r) => r.data)
@@ -28,7 +34,12 @@ export function getByToken(token: string) {
 
 export function initializeCheckout(
   token: string,
-  payload: { payerEmail: string; payerName?: string; payerPhone?: string },
+  payload: {
+    payerEmail: string
+    payerName?: string
+    payerPhone?: string
+    paymentMethod?: PaymentMethod
+  },
 ) {
   return publicApiClient
     .post<CheckoutResult>(`/public/personal-invoices/${token}/checkout`, payload)
