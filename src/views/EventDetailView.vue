@@ -55,6 +55,7 @@ onMounted(async () => {
     description.value = store.event?.description ?? ''
     coverImageUrl.value = store.event?.coverImageUrl ?? ''
     targetGoal.value = store.event?.targetGoal ? Number(store.event.targetGoal) : null
+    if (primaryLink.value) await toggleShareLinks(primaryLink.value.id)
   } catch (err) {
     loadError.value = extractErrorMessage(err)
   }
@@ -265,6 +266,22 @@ function categoryProgressPct(allocated: string, estimated: string): number {
 }
 
 // --- Invoices ---
+// The event's own default link (auto-created alongside the event — see
+// EventsService#create) is permanent and has no expiry; it's always the
+// earliest such link. Surfacing it up front means a quick-collection
+// organizer never has to hunt through "+ Generate link" for the one link
+// they already have — they just copy it.
+const primaryLink = computed(() => {
+  const permanent = store.invoices
+    .filter((inv) => inv.expiresAt === null)
+    .slice()
+    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+  return permanent[0] ?? null
+})
+const otherInvoices = computed(() =>
+  store.invoices.filter((inv) => inv.id !== primaryLink.value?.id),
+)
+
 const showInvoiceForm = ref(false)
 const showLinkCustomize = ref(false)
 const invContributorName = ref('')
@@ -658,10 +675,49 @@ const outlineButtonClass =
 
       <!-- LINKS -->
       <section v-else-if="activeTab === 'invoices'">
+        <!-- Primary link — the one auto-created with this event. Always
+             visible and ready to copy; no need to generate another one for
+             a simple collection. -->
+        <div v-if="primaryLink" class="mb-4 rounded-2xl border border-babyblue-200 bg-babyblue-50/60 p-4">
+          <p class="mb-2 text-xs font-semibold tracking-wide text-babyblue-700 uppercase">Your shareable link</p>
+          <div class="flex flex-wrap items-center gap-2">
+            <code class="min-w-0 flex-1 truncate rounded-lg border border-babyblue-100 bg-white px-3 py-2 text-xs text-slate-600">{{
+              payLinkFor(primaryLink.secureToken)
+            }}</code>
+            <button
+              type="button"
+              :class="[primaryButtonClass, 'shrink-0']"
+              @click="copyPayLink(primaryLink.id, primaryLink.secureToken)"
+            >
+              {{ copiedInvoiceId === primaryLink.id ? '✓ Copied!' : '🔗 Copy link' }}
+            </button>
+          </div>
+          <div
+            v-if="shareLinksFor(primaryLink.id).whatsapp.available || shareLinksFor(primaryLink.id).email.available"
+            class="mt-2 flex flex-wrap gap-2 text-xs"
+          >
+            <a
+              v-if="shareLinksFor(primaryLink.id).whatsapp.available"
+              :href="shareLinksFor(primaryLink.id).whatsapp.url || undefined"
+              target="_blank"
+              rel="noopener"
+              class="rounded-lg border border-babyblue-200 px-2.5 py-1.5 font-medium text-babyblue-700 transition-colors hover:bg-babyblue-100"
+            >
+              💬 WhatsApp
+            </a>
+            <a
+              v-if="shareLinksFor(primaryLink.id).email.available"
+              :href="shareLinksFor(primaryLink.id).email.url || undefined"
+              class="rounded-lg border border-babyblue-200 px-2.5 py-1.5 font-medium text-babyblue-700 transition-colors hover:bg-babyblue-100"
+            >
+              ✉️ Email
+            </a>
+          </div>
+        </div>
+
         <div class="mb-4 flex items-center justify-between gap-3">
           <p class="text-sm text-slate-500">
-            Generate a shareable payment link — permanent (reusable by anyone) or temporary (expires, single use).
-            Whoever opens it can pay now or just pledge.
+            Need a separate link — for one contributor, a fixed amount, or a one-time use? Generate another below.
           </p>
           <button type="button" :class="[primaryButtonClass, 'shrink-0']" @click="showInvoiceForm = !showInvoiceForm">
             {{ showInvoiceForm ? 'Cancel' : '+ Generate link' }}
@@ -712,13 +768,13 @@ const outlineButtonClass =
         </form>
 
         <div
-          v-if="store.invoices.length === 0"
+          v-if="otherInvoices.length === 0"
           class="rounded-2xl border border-dashed border-babyblue-200 bg-white/60 p-8 text-center text-sm text-slate-500"
         >
-          No links yet.
+          No additional links yet.
         </div>
         <ul v-else class="space-y-2">
-          <li v-for="inv in store.invoices" :key="inv.id" class="rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm">
+          <li v-for="inv in otherInvoices" :key="inv.id" class="rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm">
             <div class="flex flex-wrap items-center justify-between gap-2">
               <div class="min-w-0">
                 <p class="truncate font-medium text-slate-900">
