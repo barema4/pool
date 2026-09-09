@@ -11,10 +11,16 @@ export function create(payload: { eventId: string; name: string; estimatedCost?:
   return apiClient.post<BudgetCategory>('/budget-categories', payload).then((r) => r.data)
 }
 
-export function allocate(
+export function update(
   budgetCategoryId: string,
-  payload: { transactionId: string; amount: number },
+  payload: { name?: string; estimatedCost?: number },
 ) {
+  return apiClient
+    .patch<BudgetCategory>(`/budget-categories/${budgetCategoryId}`, payload)
+    .then((r) => r.data)
+}
+
+export function allocate(budgetCategoryId: string, payload: { amount: number }) {
   return apiClient
     .post(`/budget-categories/${budgetCategoryId}/allocate`, payload)
     .then((r) => r.data)

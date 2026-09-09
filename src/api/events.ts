@@ -40,6 +40,12 @@ export function updateStatus(eventId: string, status: EventStatus) {
   return apiClient.patch<EventRecord>(`/events/${eventId}/status`, { status }).then((r) => r.data)
 }
 
+export function setBudgeting(eventId: string, enabled: boolean) {
+  return apiClient
+    .patch<EventRecord>(`/events/${eventId}/budgeting`, { enabled })
+    .then((r) => r.data)
+}
+
 export function setPayout(
   eventId: string,
   payload: { bankCode: string; bankName: string; accountNumber: string },

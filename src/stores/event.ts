@@ -69,6 +69,12 @@ export const useEventStore = defineStore('event', () => {
     event.value = { ...event.value, ...updated }
   }
 
+  async function setBudgetingEnabled(enabled: boolean) {
+    if (!event.value) return
+    const updated = await eventsApi.setBudgeting(event.value.id, enabled)
+    event.value = { ...event.value, ...updated }
+  }
+
   function reset() {
     event.value = null
     budgetCategories.value = []
@@ -89,6 +95,7 @@ export const useEventStore = defineStore('event', () => {
     updateEvent,
     updateStatus,
     setPayout,
+    setBudgetingEnabled,
     reset,
   }
 })

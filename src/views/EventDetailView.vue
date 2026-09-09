@@ -38,6 +38,16 @@ const goalProgressPct = computed(() => {
   return Math.min(100, Math.round((totalReceived.value / goal) * 100))
 })
 
+// --- Budget pool (received / allocated / remaining) ---
+const totalAllocated = computed(() =>
+  store.budgetCategories.reduce((sum, c) => sum + Number(c.allocatedFunds), 0),
+)
+const remainingToAllocate = computed(() => totalReceived.value - totalAllocated.value)
+const allocatedProgressPct = computed(() => {
+  if (totalReceived.value <= 0) return 0
+  return Math.min(100, Math.round((totalAllocated.value / totalReceived.value) * 100))
+})
+
 onMounted(async () => {
   try {
     await store.load(eventId)
@@ -98,19 +108,69 @@ async function handleSetPayout(payload: { bankCode: string; bankName: string; ac
   }
 }
 
+// --- Budget: on/off toggle ---
+const budgetingError = ref('')
+const togglingBudgeting = ref(false)
+
+async function handleToggleBudgeting() {
+  if (!store.event) return
+  budgetingError.value = ''
+  togglingBudgeting.value = true
+  try {
+    await store.setBudgetingEnabled(!store.event.budgetingEnabled)
+  } catch (err) {
+    budgetingError.value = extractErrorMessage(err)
+  } finally {
+    togglingBudgeting.value = false
+  }
+}
+
+// --- Budget: wedding template ---
+// Standard wedding budget breakdown (venue/catering/photography/etc. — see
+// 2026 wedding-budget-percentage research), applied as a % of the event's
+// target goal. Only offered while the category list is empty, so it never
+// collides with categories someone already created by hand.
+const WEDDING_TEMPLATE: { name: string; pct: number }[] = [
+  { name: 'Venue & Catering', pct: 0.45 },
+  { name: 'Photography & Video', pct: 0.12 },
+  { name: 'Attire', pct: 0.08 },
+  { name: 'Decor & Flowers', pct: 0.1 },
+  { name: 'Music & Entertainment', pct: 0.06 },
+  { name: 'Stationery', pct: 0.03 },
+  { name: 'Cake & Favors', pct: 0.03 },
+  { name: 'Contingency', pct: 0.13 },
+]
+const applyingTemplate = ref(false)
+const templateError = ref('')
+
+async function applyWeddingTemplate() {
+  templateError.value = ''
+  applyingTemplate.value = true
+  const goal = store.event?.targetGoal ? Number(store.event.targetGoal) : 0
+  try {
+    for (const item of WEDDING_TEMPLATE) {
+      await budgetCategoriesApi.create({
+        eventId,
+        name: item.name,
+        estimatedCost: goal > 0 ? Math.round(goal * item.pct) : undefined,
+      })
+    }
+    await store.refreshBudgetCategories()
+  } catch (err) {
+    templateError.value = extractErrorMessage(err)
+  } finally {
+    applyingTemplate.value = false
+  }
+}
+
 // --- Budget categories ---
 const newCategoryName = ref('')
 const newCategoryCost = ref<number | null>(null)
 const categoryError = ref('')
 const creatingCategory = ref(false)
 const allocatingCategoryId = ref<string | null>(null)
-const allocateTransactionId = ref('')
 const allocateAmount = ref<number | null>(null)
 const allocateError = ref('')
-
-const successfulTransactions = computed(() =>
-  store.transactions.filter((t) => t.status === 'SUCCESS'),
-)
 
 async function handleCreateCategory() {
   categoryError.value = ''
@@ -132,19 +192,65 @@ async function handleCreateCategory() {
 }
 
 function openAllocate(categoryId: string) {
+  editingCategoryId.value = null
   allocatingCategoryId.value = allocatingCategoryId.value === categoryId ? null : categoryId
-  allocateTransactionId.value = ''
   allocateAmount.value = null
   allocateError.value = ''
 }
 
+// --- Budget category editing (name / estimated cost) ---
+const editingCategoryId = ref<string | null>(null)
+const editName = ref('')
+const editCost = ref<number | null>(null)
+const editError = ref('')
+const savingEdit = ref(false)
+
+function openEdit(category: { id: string; name: string; estimatedCost: string }) {
+  allocatingCategoryId.value = null
+  if (editingCategoryId.value === category.id) {
+    editingCategoryId.value = null
+    return
+  }
+  editingCategoryId.value = category.id
+  editName.value = category.name
+  editCost.value = Number(category.estimatedCost) || null
+  editError.value = ''
+}
+
+async function handleSaveEdit(categoryId: string) {
+  editError.value = ''
+  savingEdit.value = true
+  try {
+    await budgetCategoriesApi.update(categoryId, {
+      name: editName.value,
+      estimatedCost: editCost.value ?? undefined,
+    })
+    editingCategoryId.value = null
+    await store.refreshBudgetCategories()
+  } catch (err) {
+    editError.value = extractErrorMessage(err)
+  } finally {
+    savingEdit.value = false
+  }
+}
+
+// Quick-fills the amount input with as much as can usefully go to this
+// category right now: capped by both what's left in the event's pool and
+// (if the category has an estimated cost) what it still needs.
+function fillRemainingFor(category: { estimatedCost: string; allocatedFunds: string }) {
+  const est = Number(category.estimatedCost)
+  const stillNeeded = est > 0 ? Math.max(est - Number(category.allocatedFunds), 0) : Infinity
+  allocateAmount.value = Math.max(Math.min(remainingToAllocate.value, stillNeeded), 0)
+}
+
 async function handleAllocate(categoryId: string) {
   allocateError.value = ''
+  if (allocateAmount.value !== null && allocateAmount.value > remainingToAllocate.value) {
+    allocateError.value = `Only ${formatMoney(remainingToAllocate.value)} is left unallocated for this event.`
+    return
+  }
   try {
-    await budgetCategoriesApi.allocate(categoryId, {
-      transactionId: allocateTransactionId.value,
-      amount: allocateAmount.value!,
-    })
+    await budgetCategoriesApi.allocate(categoryId, { amount: allocateAmount.value! })
     allocatingCategoryId.value = null
     await store.refreshBudgetCategories()
   } catch (err) {
@@ -378,78 +484,176 @@ const outlineButtonClass =
         </div>
       </section>
 
-      <!-- BUDGET CATEGORIES -->
+      <!-- BUDGET -->
       <section v-else-if="activeTab === 'budget'">
-        <form class="mb-4 flex flex-wrap items-end gap-2 rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm" @submit.prevent="handleCreateCategory">
+        <!-- Toggle -->
+        <div class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm">
           <div>
-            <label class="mb-1 block text-xs font-medium text-slate-700">Category name</label>
-            <input v-model="newCategoryName" required :class="inputClass" />
+            <p class="font-medium text-slate-900">Budget allocation</p>
+            <p class="text-xs text-slate-500">
+              Turn this on for an event with specific items to fund — like a wedding. Leave off for a simple collection.
+            </p>
           </div>
-          <div>
-            <label class="mb-1 block text-xs font-medium text-slate-700">Estimated cost</label>
-            <input v-model.number="newCategoryCost" type="number" step="0.01" :class="inputClass" />
-          </div>
-          <button type="submit" :disabled="creatingCategory" :class="primaryButtonClass">
-            {{ creatingCategory ? 'Adding…' : 'Add category' }}
-          </button>
-        </form>
-        <p v-if="categoryError" class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{{ categoryError }}</p>
-
-        <div
-          v-if="store.budgetCategories.length === 0"
-          class="rounded-2xl border border-dashed border-babyblue-200 bg-white/60 p-8 text-center text-sm text-slate-500"
-        >
-          No budget categories yet.
-        </div>
-        <ul v-else class="space-y-2">
-          <li
-            v-for="cat in store.budgetCategories"
-            :key="cat.id"
-            class="rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm"
+          <button
+            type="button"
+            role="switch"
+            :aria-checked="store.event.budgetingEnabled"
+            :disabled="togglingBudgeting"
+            class="relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-50"
+            :class="store.event.budgetingEnabled ? 'bg-babyblue-600' : 'bg-slate-200'"
+            @click="handleToggleBudgeting"
           >
-            <div class="flex flex-wrap items-center justify-between gap-2">
-              <div class="min-w-0 flex-1">
-                <p class="truncate font-medium text-slate-900">{{ cat.name }}</p>
-                <p class="text-xs text-slate-500">
-                  {{ formatMoney(cat.allocatedFunds) }} allocated of {{ formatMoney(cat.estimatedCost) }} estimated
-                </p>
-                <div class="mt-2 h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-babyblue-100">
+            <span
+              class="inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform"
+              :class="store.event.budgetingEnabled ? 'translate-x-6' : 'translate-x-1'"
+            />
+          </button>
+        </div>
+        <p v-if="budgetingError" class="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{{ budgetingError }}</p>
+
+        <template v-if="store.event.budgetingEnabled">
+          <!-- Pool summary -->
+          <div class="mb-4 rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm">
+            <div class="mb-1 flex flex-wrap justify-between gap-2 text-xs text-slate-500">
+              <span>{{ formatMoney(totalReceived) }} received</span>
+              <span>{{ formatMoney(totalAllocated) }} allocated</span>
+              <span class="font-semibold text-babyblue-700"
+                >{{ formatMoney(remainingToAllocate) }} remaining</span
+              >
+            </div>
+            <div class="h-2 w-full overflow-hidden rounded-full bg-babyblue-100">
+              <div
+                class="h-full rounded-full bg-babyblue-500 transition-all"
+                :style="{ width: `${allocatedProgressPct}%` }"
+              />
+            </div>
+          </div>
+
+          <!-- Wedding template -->
+          <div
+            v-if="store.budgetCategories.length === 0"
+            class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-dashed border-babyblue-200 bg-babyblue-50/60 p-4"
+          >
+            <p class="text-sm text-slate-600">
+              Planning a wedding? Start from a standard breakdown (venue, catering, photography, and more).
+            </p>
+            <button
+              type="button"
+              :disabled="applyingTemplate"
+              :class="[outlineButtonClass, 'shrink-0']"
+              @click="applyWeddingTemplate"
+            >
+              {{ applyingTemplate ? 'Adding…' : '🎊 Use wedding budget template' }}
+            </button>
+          </div>
+          <p v-if="templateError" class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{{ templateError }}</p>
+
+          <form class="mb-4 flex flex-wrap items-end gap-2 rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm" @submit.prevent="handleCreateCategory">
+            <div>
+              <label class="mb-1 block text-xs font-medium text-slate-700">Category name</label>
+              <input v-model="newCategoryName" required :class="inputClass" />
+            </div>
+            <div>
+              <label class="mb-1 block text-xs font-medium text-slate-700">Estimated cost</label>
+              <input v-model.number="newCategoryCost" type="number" step="0.01" :class="inputClass" />
+            </div>
+            <button type="submit" :disabled="creatingCategory" :class="primaryButtonClass">
+              {{ creatingCategory ? 'Adding…' : 'Add category' }}
+            </button>
+          </form>
+          <p v-if="categoryError" class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{{ categoryError }}</p>
+
+          <div
+            v-if="store.budgetCategories.length === 0"
+            class="rounded-2xl border border-dashed border-babyblue-200 bg-white/60 p-8 text-center text-sm text-slate-500"
+          >
+            No budget categories yet.
+          </div>
+          <ul v-else class="space-y-2">
+            <li
+              v-for="cat in store.budgetCategories"
+              :key="cat.id"
+              class="rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm"
+            >
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div class="min-w-0 flex-1">
+                  <p class="truncate font-medium text-slate-900">{{ cat.name }}</p>
+                  <p class="text-xs text-slate-500">
+                    {{ formatMoney(cat.allocatedFunds) }} allocated
+                    <span v-if="Number(cat.estimatedCost) > 0"> of {{ formatMoney(cat.estimatedCost) }} estimated</span>
+                  </p>
                   <div
-                    class="h-full rounded-full bg-babyblue-500"
-                    :style="{ width: `${categoryProgressPct(cat.allocatedFunds, cat.estimatedCost)}%` }"
-                  />
+                    v-if="Number(cat.estimatedCost) > 0"
+                    class="mt-2 h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-babyblue-100"
+                  >
+                    <div
+                      class="h-full rounded-full bg-babyblue-500"
+                      :style="{ width: `${categoryProgressPct(cat.allocatedFunds, cat.estimatedCost)}%` }"
+                    />
+                  </div>
+                </div>
+                <div class="flex shrink-0 gap-2">
+                  <button type="button" :class="outlineButtonClass" @click="openEdit(cat)">
+                    {{ editingCategoryId === cat.id ? 'Cancel' : 'Edit' }}
+                  </button>
+                  <button type="button" :class="outlineButtonClass" @click="openAllocate(cat.id)">
+                    {{ allocatingCategoryId === cat.id ? 'Cancel' : 'Allocate' }}
+                  </button>
                 </div>
               </div>
-              <button type="button" :class="[outlineButtonClass, 'shrink-0']" @click="openAllocate(cat.id)">
-                {{ allocatingCategoryId === cat.id ? 'Cancel' : 'Allocate' }}
-              </button>
-            </div>
 
-            <form
-              v-if="allocatingCategoryId === cat.id"
-              class="mt-3 flex flex-wrap items-end gap-2 border-t border-babyblue-100 pt-3"
-              @submit.prevent="handleAllocate(cat.id)"
-            >
-              <div>
-                <label class="mb-1 block text-xs font-medium text-slate-700">Settled transaction</label>
-                <select v-model="allocateTransactionId" required :class="inputClass">
-                  <option value="" disabled>Select…</option>
-                  <option v-for="t in successfulTransactions" :key="t.id" :value="t.id">
-                    {{ t.providerReference }} — {{ formatMoney(t.amountSettled) }}
-                  </option>
-                </select>
+              <form
+                v-if="editingCategoryId === cat.id"
+                class="mt-3 flex flex-wrap items-end gap-2 border-t border-babyblue-100 pt-3"
+                @submit.prevent="handleSaveEdit(cat.id)"
+              >
+                <div>
+                  <label class="mb-1 block text-xs font-medium text-slate-700">Category name</label>
+                  <input v-model="editName" required :class="inputClass" />
+                </div>
+                <div>
+                  <label class="mb-1 block text-xs font-medium text-slate-700">Estimated cost</label>
+                  <input v-model.number="editCost" type="number" step="0.01" min="0" :class="inputClass" />
+                </div>
+                <button type="submit" :disabled="savingEdit" :class="primaryButtonClass">
+                  {{ savingEdit ? 'Saving…' : 'Save' }}
+                </button>
+              </form>
+              <p v-if="editingCategoryId === cat.id && editError" class="mt-2 text-sm text-red-600">
+                {{ editError }}
+              </p>
+
+              <div v-if="allocatingCategoryId === cat.id" class="mt-3 border-t border-babyblue-100 pt-3">
+                <p v-if="remainingToAllocate <= 0" class="text-sm text-slate-500">
+                  Nothing left to allocate — this event's remaining unallocated balance is
+                  {{ formatMoney(remainingToAllocate) }}. Wait for more payments to come in, or free up funds by
+                  lowering another category's allocation first.
+                </p>
+                <form v-else class="flex flex-wrap items-end gap-2" @submit.prevent="handleAllocate(cat.id)">
+                  <div>
+                    <label class="mb-1 block text-xs font-medium text-slate-700">Amount</label>
+                    <input
+                      v-model.number="allocateAmount"
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      :max="remainingToAllocate"
+                      required
+                      :class="inputClass"
+                    />
+                  </div>
+                  <button type="button" :class="outlineButtonClass" @click="fillRemainingFor(cat)">
+                    Fill remaining
+                  </button>
+                  <button type="submit" :class="primaryButtonClass">Allocate</button>
+                </form>
               </div>
-              <div>
-                <label class="mb-1 block text-xs font-medium text-slate-700">Amount</label>
-                <input v-model.number="allocateAmount" type="number" step="0.01" required :class="inputClass" />
-              </div>
-              <button type="submit" :class="primaryButtonClass">Allocate</button>
-            </form>
-            <p v-if="allocatingCategoryId === cat.id && allocateError" class="mt-2 text-sm text-red-600">
-              {{ allocateError }}
-            </p>
-          </li>
-        </ul>
+              <p v-if="allocatingCategoryId === cat.id && allocateError" class="mt-2 text-sm text-red-600">
+                {{ allocateError }}
+              </p>
+            </li>
+          </ul>
+        </template>
       </section>
 
       <!-- LINKS -->

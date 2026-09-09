@@ -84,6 +84,9 @@ export interface EventRecord extends PayoutDetails {
   targetGoal: string | null
   isPermanent: boolean
   status: EventStatus
+  // Off by default — a simple collection has no line items to fund. Turn on
+  // for an event like a wedding that needs money allocated to categories.
+  budgetingEnabled: boolean
   createdAt: string
   // Present only on the response right after creation — the secureToken of
   // the shareable link auto-generated alongside the event.
