@@ -4,6 +4,8 @@ import type {
   OrganizationWithRole,
   OrganizationMember,
   OrgRole,
+  OrganizationCountry,
+  MobileMoneyProvider,
   InviteMemberResult,
   AuditLogEntry,
 } from '@/types/api'
@@ -26,7 +28,11 @@ export function listMembers(organizationId: string) {
 // flat `role` — it returns the raw Prisma `memberships` relation instead.
 // The caller (organizations store) knows the creator is always
 // MAIN_ORGANIZER and adds that field itself.
-export function create(payload: { name: string; type: Organization['type'] }) {
+export function create(payload: {
+  name: string
+  type: Organization['type']
+  country?: OrganizationCountry
+}) {
   return apiClient.post<Organization>('/organizations', payload).then((r) => r.data)
 }
 
@@ -48,5 +54,14 @@ export function setPayout(
 ) {
   return apiClient
     .patch<Organization>(`/organizations/${organizationId}/payout`, payload)
+    .then((r) => r.data)
+}
+
+export function setMobileMoneyPayout(
+  organizationId: string,
+  payload: { provider: MobileMoneyProvider; phoneNumber: string },
+) {
+  return apiClient
+    .patch<Organization>(`/organizations/${organizationId}/payout-mobile-money`, payload)
     .then((r) => r.data)
 }

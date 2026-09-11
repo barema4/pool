@@ -16,7 +16,9 @@ export const useOrganizationsStore = defineStore('organizations', () => {
     }
   }
 
-  async function createOrganization(payload: { name: string; type: OrganizationWithRole['type'] }) {
+  async function createOrganization(
+    payload: Parameters<typeof organizationsApi.create>[0],
+  ) {
     const org = await organizationsApi.create(payload)
     // Creating an organization always makes the caller its MAIN_ORGANIZER
     // (enforced server-side) — the create response itself doesn't carry a

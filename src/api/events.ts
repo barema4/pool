@@ -1,5 +1,5 @@
 import { apiClient } from './client'
-import type { EventRecord, EventDetail, EventStatus, PayoutDetails } from '@/types/api'
+import type { EventRecord, EventDetail, EventStatus, PayoutDetails, OrganizationCountry } from '@/types/api'
 
 export function listForOrganization(organizationId: string) {
   return apiClient.get<EventRecord[]>('/events', { params: { organizationId } }).then((r) => r.data)
@@ -20,7 +20,12 @@ export function create(payload: {
   return apiClient.post<EventRecord>('/events', payload).then((r) => r.data)
 }
 
-export function createQuick(payload: { title: string; description?: string; targetGoal?: number }) {
+export function createQuick(payload: {
+  title: string
+  description?: string
+  targetGoal?: number
+  country?: OrganizationCountry
+}) {
   return apiClient.post<EventRecord>('/events/quick', payload).then((r) => r.data)
 }
 

@@ -50,7 +50,7 @@ async function handleSubmit() {
       payerPhone: payerPhone.value || undefined,
       paymentMethod: selectedMethod.value,
     })
-    window.location.href = result.authorizationUrl
+    if (result.authorizationUrl) window.location.href = result.authorizationUrl
   } catch (err) {
     submitError.value = extractErrorMessage(err)
     submitting.value = false

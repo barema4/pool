@@ -6,19 +6,28 @@ import ShareLinkReady from '@/components/ShareLinkReady.vue'
 import { useOrganizationsStore } from '@/stores/organizations'
 import * as eventsApi from '@/api/events'
 import { extractErrorMessage } from '@/api/client'
-import type { OrganizationType, EventRecord } from '@/types/api'
+import type { OrganizationType, OrganizationCountry, EventRecord } from '@/types/api'
 
 const store = useOrganizationsStore()
 
 const showForm = ref(false)
 const name = ref('')
 const type = ref<OrganizationType>('OTHER')
+const country = ref<OrganizationCountry>('KENYA')
 const error = ref('')
 const submitting = ref(false)
 
+const countryOptions: { value: OrganizationCountry; label: string }[] = [
+  { value: 'KENYA', label: '🇰🇪 Kenya — card & M-Pesa via Paystack' },
+  { value: 'UGANDA', label: '🇺🇬 Uganda — MTN & Airtel Money via PawaPay' },
+]
+
 // Quick collection — skips organization setup entirely for a solo user.
+// Still needs a country pick, since that determines the payment provider for
+// the personal org it reuses/creates behind the scenes.
 const showQuickForm = ref(false)
 const quickTitle = ref('')
+const quickCountry = ref<OrganizationCountry>('KENYA')
 const quickError = ref('')
 const quickSubmitting = ref(false)
 const quickResult = ref<EventRecord | null>(null)
@@ -27,7 +36,10 @@ async function handleQuickCreate() {
   quickError.value = ''
   quickSubmitting.value = true
   try {
-    quickResult.value = await eventsApi.createQuick({ title: quickTitle.value })
+    quickResult.value = await eventsApi.createQuick({
+      title: quickTitle.value,
+      country: quickCountry.value,
+    })
     quickTitle.value = ''
     showQuickForm.value = false
     await store.fetchMine()
@@ -53,7 +65,7 @@ async function handleCreate() {
   error.value = ''
   submitting.value = true
   try {
-    await store.createOrganization({ name: name.value, type: type.value })
+    await store.createOrganization({ name: name.value, type: type.value, country: country.value })
     name.value = ''
     showForm.value = false
   } catch (err) {
@@ -107,13 +119,25 @@ async function handleCreate() {
         class="mt-4 space-y-2 border-t border-babyblue-100 pt-4"
         @submit.prevent="handleQuickCreate"
       >
-        <input
-          v-model="quickTitle"
-          type="text"
-          required
-          placeholder="What are you collecting for? e.g. Mum's hospital bill"
-          class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none"
-        />
+        <div>
+          <label class="mb-1 block text-sm font-medium text-slate-700">What are you collecting for?</label>
+          <input
+            v-model="quickTitle"
+            type="text"
+            required
+            placeholder="e.g. Mum's hospital bill"
+            class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none"
+          />
+        </div>
+        <div>
+          <label class="mb-1 block text-sm font-medium text-slate-700">Country</label>
+          <select
+            v-model="quickCountry"
+            class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none"
+          >
+            <option v-for="opt in countryOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+          </select>
+        </div>
         <p v-if="quickError" class="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{{ quickError }}</p>
         <button
           type="submit"
@@ -147,6 +171,16 @@ async function handleCreate() {
         >
           <option v-for="t in orgTypes" :key="t" :value="t">{{ orgTypeEmoji[t] }} {{ t }}</option>
         </select>
+      </div>
+      <div>
+        <label class="mb-1 block text-sm font-medium text-slate-700">Country</label>
+        <select
+          v-model="country"
+          class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none"
+        >
+          <option v-for="opt in countryOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+        </select>
+        <p class="mt-1 text-xs text-slate-500">Determines how this organization's events collect and pay out money. Cannot be changed later.</p>
       </div>
       <p v-if="error" class="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{{ error }}</p>
       <button

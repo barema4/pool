@@ -7,7 +7,7 @@ import { useEventStore } from '@/stores/event'
 import * as budgetCategoriesApi from '@/api/budgetCategories'
 import * as invoicesApi from '@/api/invoices'
 import { extractErrorMessage } from '@/api/client'
-import { formatMoney, formatDate, copyToClipboard, statusBadgeClass } from '@/lib/format'
+import { formatMoney, formatDate, copyToClipboard, statusBadgeClass, currencyForCountry } from '@/lib/format'
 import type { EventStatus, ShareLinks, ContributorSummary } from '@/types/api'
 
 const route = useRoute()
@@ -25,6 +25,13 @@ const tabs: { key: Tab; label: string; icon: string }[] = [
 ]
 
 const loadError = ref('')
+
+// Both KES (Kenya) and UGX (Uganda) events exist now — always show which one
+// an amount is in rather than a bare number.
+const currency = computed(() => currencyForCountry(store.event?.organization?.country))
+function money(value: string | number | null | undefined): string {
+  return formatMoney(value, currency.value)
+}
 
 const totalReceived = computed(() =>
   store.transactions
@@ -247,7 +254,7 @@ function fillRemainingFor(category: { estimatedCost: string; allocatedFunds: str
 async function handleAllocate(categoryId: string) {
   allocateError.value = ''
   if (allocateAmount.value !== null && allocateAmount.value > remainingToAllocate.value) {
-    allocateError.value = `Only ${formatMoney(remainingToAllocate.value)} is left unallocated for this event.`
+    allocateError.value = `Only ${money(remainingToAllocate.value)} is left unallocated for this event.`
     return
   }
   try {
@@ -423,7 +430,7 @@ const outlineButtonClass =
 
         <div v-if="goalProgressPct !== null" class="mt-4">
           <div class="mb-1 flex justify-between text-xs text-slate-500">
-            <span>{{ formatMoney(totalReceived) }} raised of {{ formatMoney(store.event.targetGoal) }}</span>
+            <span>{{ money(totalReceived) }} raised of {{ money(store.event.targetGoal) }}</span>
             <span class="font-medium text-babyblue-700">{{ goalProgressPct }}%</span>
           </div>
           <div class="h-2 w-full overflow-hidden rounded-full bg-babyblue-100">
@@ -532,10 +539,10 @@ const outlineButtonClass =
           <!-- Pool summary -->
           <div class="mb-4 rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm">
             <div class="mb-1 flex flex-wrap justify-between gap-2 text-xs text-slate-500">
-              <span>{{ formatMoney(totalReceived) }} received</span>
-              <span>{{ formatMoney(totalAllocated) }} allocated</span>
+              <span>{{ money(totalReceived) }} received</span>
+              <span>{{ money(totalAllocated) }} allocated</span>
               <span class="font-semibold text-babyblue-700"
-                >{{ formatMoney(remainingToAllocate) }} remaining</span
+                >{{ money(remainingToAllocate) }} remaining</span
               >
             </div>
             <div class="h-2 w-full overflow-hidden rounded-full bg-babyblue-100">
@@ -596,8 +603,8 @@ const outlineButtonClass =
                 <div class="min-w-0 flex-1">
                   <p class="truncate font-medium text-slate-900">{{ cat.name }}</p>
                   <p class="text-xs text-slate-500">
-                    {{ formatMoney(cat.allocatedFunds) }} allocated
-                    <span v-if="Number(cat.estimatedCost) > 0"> of {{ formatMoney(cat.estimatedCost) }} estimated</span>
+                    {{ money(cat.allocatedFunds) }} allocated
+                    <span v-if="Number(cat.estimatedCost) > 0"> of {{ money(cat.estimatedCost) }} estimated</span>
                   </p>
                   <div
                     v-if="Number(cat.estimatedCost) > 0"
@@ -643,7 +650,7 @@ const outlineButtonClass =
               <div v-if="allocatingCategoryId === cat.id" class="mt-3 border-t border-babyblue-100 pt-3">
                 <p v-if="remainingToAllocate <= 0" class="text-sm text-slate-500">
                   Nothing left to allocate — this event's remaining unallocated balance is
-                  {{ formatMoney(remainingToAllocate) }}. Wait for more payments to come in, or free up funds by
+                  {{ money(remainingToAllocate) }}. Wait for more payments to come in, or free up funds by
                   lowering another category's allocation first.
                 </p>
                 <form v-else class="flex flex-wrap items-end gap-2" @submit.prevent="handleAllocate(cat.id)">
@@ -782,8 +789,8 @@ const outlineButtonClass =
                   <span class="ml-1 text-xs font-normal text-slate-400">({{ inv.source }})</span>
                 </p>
                 <p class="text-xs text-slate-500">
-                  {{ formatMoney(inv.amountPaid) }}
-                  <span v-if="inv.amountRequested"> of {{ formatMoney(inv.amountRequested) }}</span>
+                  {{ money(inv.amountPaid) }}
+                  <span v-if="inv.amountRequested"> of {{ money(inv.amountRequested) }}</span>
                 </p>
               </div>
               <div class="flex shrink-0 items-center gap-2">
@@ -852,7 +859,7 @@ const outlineButtonClass =
               <tr v-for="t in store.transactions" :key="t.id">
                 <td class="px-4 py-3 font-mono text-xs">{{ t.providerReference }}</td>
                 <td class="px-4 py-3">{{ t.paymentRail === 'MOBILE_MONEY' ? 'Mobile Money' : 'Card' }}</td>
-                <td class="px-4 py-3 font-medium">{{ formatMoney(t.amountSettled) }}</td>
+                <td class="px-4 py-3 font-medium">{{ money(t.amountSettled) }}</td>
                 <td class="px-4 py-3">
                   <span class="rounded-full px-2.5 py-1 text-xs font-medium" :class="statusBadgeClass(t.status)">{{
                     t.status
@@ -875,13 +882,13 @@ const outlineButtonClass =
               <span class="text-slate-500"
                 >Pledged
                 <strong class="block text-base text-slate-900">{{
-                  formatMoney(contributorSummary.totals.pledged)
+                  money(contributorSummary.totals.pledged)
                 }}</strong></span
               >
               <span class="text-slate-500"
                 >Received
                 <strong class="block text-base text-babyblue-700">{{
-                  formatMoney(contributorSummary.totals.received)
+                  money(contributorSummary.totals.received)
                 }}</strong></span
               >
             </div>
@@ -895,7 +902,7 @@ const outlineButtonClass =
               <h3 class="mb-2 text-xs font-semibold text-green-700 uppercase">✅ Fully Paid</h3>
               <ul class="space-y-1 text-sm">
                 <li v-for="c in contributorSummary.buckets.fullyPaid" :key="c.invoiceId">
-                  {{ c.contributorName ?? 'Anonymous' }} — {{ formatMoney(c.amountPaid) }}
+                  {{ c.contributorName ?? 'Anonymous' }} — {{ money(c.amountPaid) }}
                   <span v-if="c.contributorPhone" class="text-xs text-slate-400">({{ c.contributorPhone }})</span>
                 </li>
               </ul>
@@ -904,8 +911,8 @@ const outlineButtonClass =
               <h3 class="mb-2 text-xs font-semibold text-amber-700 uppercase">🔶 Partially Paid</h3>
               <ul class="space-y-1 text-sm">
                 <li v-for="c in contributorSummary.buckets.partiallyPaid" :key="c.invoiceId">
-                  {{ c.contributorName ?? 'Anonymous' }} — {{ formatMoney(c.amountPaid) }} of
-                  {{ formatMoney(c.amountRequested) }}
+                  {{ c.contributorName ?? 'Anonymous' }} — {{ money(c.amountPaid) }} of
+                  {{ money(c.amountRequested) }}
                   <span v-if="c.contributorPhone" class="text-xs text-slate-400">({{ c.contributorPhone }})</span>
                 </li>
               </ul>
@@ -914,7 +921,7 @@ const outlineButtonClass =
               <h3 class="mb-2 text-xs font-semibold text-babyblue-700 uppercase">🕓 Pledged</h3>
               <ul class="space-y-1 text-sm">
                 <li v-for="c in contributorSummary.buckets.pledged" :key="c.invoiceId">
-                  {{ c.contributorName ?? 'Anonymous' }} — {{ formatMoney(c.amountRequested) }}
+                  {{ c.contributorName ?? 'Anonymous' }} — {{ money(c.amountRequested) }}
                   <span v-if="c.contributorPhone" class="text-xs text-slate-400">({{ c.contributorPhone }})</span>
                 </li>
               </ul>

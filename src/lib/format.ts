@@ -1,7 +1,14 @@
-export function formatMoney(value: string | number | null | undefined): string {
+// Optional currency prefix — pass it wherever an amount's country isn't
+// implicit from context, now that both KES and UGX exist in the app.
+export function formatMoney(value: string | number | null | undefined, currency?: string): string {
   if (value === null || value === undefined) return '—'
   const num = typeof value === 'string' ? Number(value) : value
-  return num.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
+  const formatted = num.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
+  return currency ? `${currency} ${formatted}` : formatted
+}
+
+export function currencyForCountry(country: 'KENYA' | 'UGANDA' | null | undefined): string {
+  return country === 'UGANDA' ? 'UGX' : 'KES'
 }
 
 export function formatDate(value: string | null | undefined): string {

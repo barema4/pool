@@ -8,12 +8,19 @@ export type EventStatus = 'DRAFT' | 'ACTIVE' | 'CLOSED' | 'ARCHIVED'
 export type InvoiceStatus = 'PENDING' | 'PARTIALLY_PAID' | 'PAID' | 'EXPIRED'
 export type InvoiceSource = 'ORGANIZER' | 'PUBLIC_PLEDGE'
 export type PaymentRail = 'MOBILE_MONEY' | 'CARD'
-// What the payer picks on our own pay page — passed to Paystack so its
-// hosted checkout skips straight to that channel instead of showing its own
-// picker.
+// What the payer picks on our own pay page for a Kenya/Paystack event —
+// passed through so Paystack's hosted checkout skips straight to that
+// channel instead of showing its own picker.
 export type PaymentMethod = 'card' | 'mobile_money'
 export type TransactionStatus = 'PENDING' | 'SUCCESS' | 'FAILED'
 export type PersonalInvoiceStatus = 'PENDING' | 'PAID' | 'EXPIRED' | 'CANCELLED'
+
+// Determines which payment provider/currency an organization's events use.
+export type OrganizationCountry = 'KENYA' | 'UGANDA'
+// Uganda mobile money networks, via PawaPay. For a Uganda event this is what
+// the payer picks instead of PaymentMethod (there is no card option).
+export type MobileMoneyProvider = 'MTN_MOMO_UGA' | 'AIRTEL_OAPI_UGA'
+export type WithdrawalStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED'
 
 export interface AuthUser {
   id: string
@@ -49,6 +56,11 @@ export interface Organization extends PayoutDetails {
   id: string
   name: string
   type: OrganizationType
+  country: OrganizationCountry
+  // Uganda/PawaPay payout destination — the number itself is never sent to
+  // the client, only the last 4 digits (mirrors payoutAccountLast4).
+  payoutMobileProvider: MobileMoneyProvider | null
+  payoutMobileNumberLast4: string | null
   createdAt: string
 }
 
@@ -99,6 +111,7 @@ export interface EventRecord extends PayoutDetails {
 
 export interface EventDetail extends EventRecord {
   budgetCategories: BudgetCategory[]
+  organization: { country: OrganizationCountry } | null
 }
 
 export interface BudgetCategory {
@@ -127,7 +140,12 @@ export interface Invoice {
 }
 
 export interface PublicInvoiceView extends Invoice {
-  event: { id: string; title: string; isPermanent: boolean }
+  event: {
+    id: string
+    title: string
+    isPermanent: boolean
+    organization: { country: OrganizationCountry } | null
+  }
 }
 
 export interface Transaction {
@@ -170,8 +188,12 @@ export interface ContributorSummary {
 }
 
 export interface CheckoutResult {
-  authorizationUrl: string
-  accessCode: string
+  // 'redirect': send the browser to authorizationUrl (Paystack). 'pending':
+  // no redirect — a payment prompt was pushed straight to the payer's phone
+  // (PawaPay); show a "check your phone" state instead.
+  status: 'redirect' | 'pending'
+  authorizationUrl?: string
+  accessCode?: string
   reference: string
 }
 
@@ -205,6 +227,23 @@ export interface PersonalInvoice {
 
 export interface PublicPersonalInvoiceView extends PersonalInvoice {
   issuer: { id: string; name: string }
+}
+
+export interface Withdrawal {
+  id: string
+  organizationId: string
+  amount: string
+  status: WithdrawalStatus
+  providerReference: string | null
+  requestedByUserId: string
+  failureReason: string | null
+  createdAt: string
+  completedAt: string | null
+}
+
+export interface WithdrawalSummary {
+  balance: number
+  withdrawals: Withdrawal[]
 }
 
 export interface ApiErrorBody {

@@ -7,6 +7,7 @@ import type {
   Receipt,
   OrgRole,
   PaymentMethod,
+  MobileMoneyProvider,
 } from '@/types/api'
 
 export function getInvoiceByToken(token: string) {
@@ -20,7 +21,10 @@ export function initializeCheckout(
     amount?: number
     contributorName?: string
     contributorPhone?: string
-    paymentMethod?: PaymentMethod
+    // Kenya: 'card' | 'mobile_money'. Uganda: which network (MTN/Airtel) —
+    // phoneNumber is then required too, see PayView.vue.
+    paymentMethod?: PaymentMethod | MobileMoneyProvider
+    phoneNumber?: string
   },
 ) {
   return publicApiClient

@@ -3,14 +3,22 @@ import { ref, computed, onMounted } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import DashboardLayout from '@/components/layout/DashboardLayout.vue'
 import PayoutSettingsCard from '@/components/PayoutSettingsCard.vue'
+import MobileMoneyPayoutCard from '@/components/MobileMoneyPayoutCard.vue'
 import ShareLinkReady from '@/components/ShareLinkReady.vue'
 import * as organizationsApi from '@/api/organizations'
 import * as eventsApi from '@/api/events'
+import * as withdrawalsApi from '@/api/withdrawals'
 import { useOrganizationsStore } from '@/stores/organizations'
 import { extractErrorMessage } from '@/api/client'
-import { statusBadgeClass } from '@/lib/format'
-import type { Organization, OrganizationMember, EventRecord, OrgRole, AuditLogEntry } from '@/types/api'
-import { formatDate } from '@/lib/format'
+import { statusBadgeClass, formatMoney, formatDate } from '@/lib/format'
+import type {
+  Organization,
+  OrganizationMember,
+  EventRecord,
+  OrgRole,
+  AuditLogEntry,
+  Withdrawal,
+} from '@/types/api'
 
 const route = useRoute()
 const organizationId = route.params.organizationId as string
@@ -20,6 +28,8 @@ const organization = ref<Organization | null>(null)
 const members = ref<OrganizationMember[]>([])
 const events = ref<EventRecord[]>([])
 const auditLog = ref<AuditLogEntry[]>([])
+const withdrawalBalance = ref(0)
+const withdrawals = ref<Withdrawal[]>([])
 const loading = ref(true)
 const loadError = ref('')
 
@@ -41,6 +51,12 @@ async function loadAll() {
     members.value = memberList
     events.value = eventList
     auditLog.value = auditEntries
+
+    if (org.country === 'UGANDA') {
+      const summary = await withdrawalsApi.listForOrganization(organizationId)
+      withdrawalBalance.value = summary.balance
+      withdrawals.value = summary.withdrawals
+    }
   } catch (err) {
     loadError.value = extractErrorMessage(err)
   } finally {
@@ -70,6 +86,38 @@ async function handleSetPayout(payload: { bankCode: string; bankName: string; ac
     organization.value = await organizationsApi.setPayout(organizationId, payload)
   } catch (err) {
     payoutError.value = extractErrorMessage(err)
+  }
+}
+
+async function handleSetMobileMoneyPayout(payload: { provider: 'MTN_MOMO_UGA' | 'AIRTEL_OAPI_UGA'; phoneNumber: string }) {
+  payoutError.value = ''
+  try {
+    organization.value = await organizationsApi.setMobileMoneyPayout(organizationId, payload)
+  } catch (err) {
+    payoutError.value = extractErrorMessage(err)
+  }
+}
+
+// Withdrawals (Uganda only)
+const withdrawAmount = ref<number | null>(null)
+const withdrawError = ref('')
+const withdrawing = ref(false)
+const showWithdrawForm = ref(false)
+
+async function handleWithdraw() {
+  withdrawError.value = ''
+  withdrawing.value = true
+  try {
+    await withdrawalsApi.create(organizationId, { amount: withdrawAmount.value! })
+    withdrawAmount.value = null
+    showWithdrawForm.value = false
+    const summary = await withdrawalsApi.listForOrganization(organizationId)
+    withdrawalBalance.value = summary.balance
+    withdrawals.value = summary.withdrawals
+  } catch (err) {
+    withdrawError.value = extractErrorMessage(err)
+  } finally {
+    withdrawing.value = false
   }
 }
 
@@ -147,16 +195,90 @@ async function handleCreateEvent() {
       <h1 class="text-2xl font-semibold text-slate-900">{{ organization.name }}</h1>
       <p class="mb-6 text-sm text-slate-500">{{ organization.type }}</p>
 
-      <!-- Payout bank account -->
+      <!-- Payout -->
       <div v-if="canManage" class="mb-8">
         <PayoutSettingsCard
+          v-if="organization.country === 'KENYA'"
           :current="organization"
           title="Payout bank account"
           description="Where money from this organization's events lands, unless an event sets its own override."
           @submit="handleSetPayout"
         />
+        <MobileMoneyPayoutCard
+          v-else
+          :current="organization"
+          @submit="handleSetMobileMoneyPayout"
+        />
         <p v-if="payoutError" class="mt-2 text-sm text-red-600">{{ payoutError }}</p>
       </div>
+
+      <!-- Withdrawals (Uganda only — PawaPay collects into a shared platform
+           balance, so getting money to the organization is this explicit
+           step rather than automatic charge-time routing) -->
+      <section v-if="organization.country === 'UGANDA' && canManage" class="mb-8">
+        <h2 class="mb-3 text-sm font-semibold tracking-wide text-babyblue-700 uppercase">Withdrawals</h2>
+        <div class="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm">
+          <div>
+            <p class="text-xs text-slate-500">Available to withdraw</p>
+            <p class="text-lg font-semibold text-babyblue-700">{{ formatMoney(withdrawalBalance, 'UGX') }}</p>
+          </div>
+          <button
+            type="button"
+            :disabled="withdrawalBalance <= 0 && !showWithdrawForm"
+            class="shrink-0 rounded-lg bg-babyblue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-babyblue-700 disabled:cursor-not-allowed disabled:opacity-50"
+            @click="showWithdrawForm = !showWithdrawForm"
+          >
+            {{ showWithdrawForm ? 'Cancel' : 'Withdraw' }}
+          </button>
+        </div>
+
+        <form
+          v-if="showWithdrawForm"
+          class="mb-3 flex flex-wrap items-end gap-2 rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm"
+          @submit.prevent="handleWithdraw"
+        >
+          <div>
+            <label class="mb-1 block text-xs font-medium text-slate-700">Amount</label>
+            <input
+              v-model.number="withdrawAmount"
+              type="number"
+              step="0.01"
+              min="0.01"
+              :max="withdrawalBalance"
+              required
+              class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none"
+            />
+          </div>
+          <button
+            type="submit"
+            :disabled="withdrawing"
+            class="rounded-lg bg-babyblue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-babyblue-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {{ withdrawing ? 'Requesting…' : 'Confirm withdrawal' }}
+          </button>
+        </form>
+        <p v-if="withdrawError" class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{{ withdrawError }}</p>
+
+        <div
+          v-if="withdrawals.length === 0"
+          class="rounded-2xl border border-dashed border-babyblue-200 bg-white/60 p-6 text-center text-sm text-slate-500"
+        >
+          No withdrawals yet.
+        </div>
+        <ul v-else class="space-y-1.5">
+          <li
+            v-for="w in withdrawals"
+            :key="w.id"
+            class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-babyblue-100 bg-white px-4 py-2.5 text-sm shadow-sm"
+          >
+            <span class="text-slate-900">{{ formatMoney(w.amount) }}</span>
+            <span class="flex items-center gap-2">
+              <span class="rounded-full px-2.5 py-1 text-xs font-medium" :class="statusBadgeClass(w.status)">{{ w.status }}</span>
+              <span class="text-xs text-slate-400">{{ formatDate(w.createdAt) }}</span>
+            </span>
+          </li>
+        </ul>
+      </section>
 
       <!-- Members -->
       <section class="mb-8">
