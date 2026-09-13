@@ -40,6 +40,9 @@ export interface PayoutDetails {
 }
 
 export interface UserProfile extends AuthUser, PayoutDetails {
+  country: OrganizationCountry
+  payoutMobileProvider: MobileMoneyProvider | null
+  payoutMobileNumberLast4: string | null
   createdAt: string
 }
 
@@ -226,7 +229,7 @@ export interface PersonalInvoice {
 }
 
 export interface PublicPersonalInvoiceView extends PersonalInvoice {
-  issuer: { id: string; name: string }
+  issuer: { id: string; name: string; country: OrganizationCountry }
 }
 
 export interface Withdrawal {

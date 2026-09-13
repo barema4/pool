@@ -5,6 +5,7 @@ import type {
   ShareLinks,
   CheckoutResult,
   PaymentMethod,
+  MobileMoneyProvider,
 } from '@/types/api'
 
 export function listMine() {
@@ -38,7 +39,8 @@ export function initializeCheckout(
     payerEmail: string
     payerName?: string
     payerPhone?: string
-    paymentMethod?: PaymentMethod
+    paymentMethod?: PaymentMethod | MobileMoneyProvider
+    phoneNumber?: string
   },
 ) {
   return publicApiClient

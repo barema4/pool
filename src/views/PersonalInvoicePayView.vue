@@ -3,8 +3,8 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import * as personalInvoicesApi from '@/api/personalInvoices'
 import { extractErrorMessage } from '@/api/client'
-import { formatMoney } from '@/lib/format'
-import type { PublicPersonalInvoiceView, PaymentMethod } from '@/types/api'
+import { formatMoney, currencyForCountry } from '@/lib/format'
+import type { PublicPersonalInvoiceView, PaymentMethod, MobileMoneyProvider } from '@/types/api'
 
 const route = useRoute()
 const token = route.params.token as string
@@ -18,11 +18,19 @@ const payerName = ref('')
 const payerPhone = ref('')
 const submitError = ref('')
 const submitting = ref(false)
-const selectedMethod = ref<PaymentMethod>('card')
+const selectedMethod = ref<PaymentMethod | MobileMoneyProvider>('card')
+// Uganda/PawaPay has no redirect page — a prompt is pushed straight to the
+// payer's phone instead, so success looks like this screen, not a redirect.
+const checkoutPending = ref(false)
 
 const isClosed = computed(
   () => invoice.value?.status === 'PAID' || invoice.value?.status === 'EXPIRED' || invoice.value?.status === 'CANCELLED',
 )
+const isUganda = computed(() => invoice.value?.issuer.country === 'UGANDA')
+const currency = computed(() => currencyForCountry(invoice.value?.issuer.country))
+function money(value: string | number | null | undefined): string {
+  return formatMoney(value, currency.value)
+}
 
 async function load() {
   loading.value = true
@@ -31,6 +39,7 @@ async function load() {
     if (invoice.value.recipientEmail) payerEmail.value = invoice.value.recipientEmail
     if (invoice.value.recipientName) payerName.value = invoice.value.recipientName
     if (invoice.value.recipientPhone) payerPhone.value = invoice.value.recipientPhone
+    if (isUganda.value) selectedMethod.value = 'MTN_MOMO_UGA'
   } catch (err) {
     loadError.value = extractErrorMessage(err)
   } finally {
@@ -49,8 +58,14 @@ async function handleSubmit() {
       payerName: payerName.value || undefined,
       payerPhone: payerPhone.value || undefined,
       paymentMethod: selectedMethod.value,
+      phoneNumber: isUganda.value ? payerPhone.value : undefined,
     })
-    if (result.authorizationUrl) window.location.href = result.authorizationUrl
+    if (result.status === 'pending') {
+      checkoutPending.value = true
+      submitting.value = false
+    } else if (result.authorizationUrl) {
+      window.location.href = result.authorizationUrl
+    }
   } catch (err) {
     submitError.value = extractErrorMessage(err)
     submitting.value = false
@@ -65,6 +80,20 @@ async function handleSubmit() {
     <div class="w-full max-w-md rounded-2xl border border-babyblue-100 bg-white p-7 shadow-lg shadow-babyblue-100">
       <div v-if="loading" class="text-sm text-slate-500">Loading…</div>
       <div v-else-if="loadError" class="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{{ loadError }}</div>
+
+      <div v-else-if="checkoutPending" class="text-center">
+        <div
+          class="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-babyblue-100 text-2xl text-babyblue-700"
+        >
+          📱
+        </div>
+        <h1 class="text-lg font-semibold text-slate-900">Check your phone</h1>
+        <p class="mt-1 text-sm text-slate-500">
+          We sent a payment prompt to {{ payerPhone }}. Enter your PIN there to complete the payment — this page
+          won't update automatically, so you can safely close it once you've confirmed on your phone.
+        </p>
+      </div>
+
       <template v-else-if="invoice">
         <div class="mb-1 flex items-center gap-2">
           <span class="flex h-9 w-9 items-center justify-center rounded-lg bg-babyblue-500 text-sm font-bold text-white">
@@ -84,7 +113,7 @@ async function handleSubmit() {
           <div class="rounded-xl bg-babyblue-50 p-4 text-sm">
             <div class="flex justify-between font-semibold text-babyblue-700">
               <span>Amount due</span>
-              <span>{{ formatMoney(invoice.amount) }}</span>
+              <span>{{ money(invoice.amount) }}</span>
             </div>
           </div>
 
@@ -108,17 +137,39 @@ async function handleSubmit() {
           </div>
 
           <div>
-            <label class="mb-1 block text-sm font-medium text-slate-700">Phone (optional)</label>
+            <label class="mb-1 block text-sm font-medium text-slate-700">
+              {{ isUganda ? 'Phone number (for mobile money)' : 'Phone (optional)' }}
+            </label>
             <input
               v-model="payerPhone"
               type="tel"
+              :required="isUganda"
+              :placeholder="isUganda ? '256771234567' : ''"
               class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none"
             />
           </div>
 
           <p v-if="submitError" class="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{{ submitError }}</p>
 
-          <div class="grid grid-cols-2 gap-2">
+          <div v-if="isUganda" class="grid grid-cols-2 gap-2">
+            <button
+              type="submit"
+              :disabled="submitting"
+              class="rounded-lg bg-babyblue-600 px-3 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-babyblue-700 disabled:cursor-not-allowed disabled:opacity-50"
+              @click="selectedMethod = 'MTN_MOMO_UGA'"
+            >
+              {{ submitting && selectedMethod === 'MTN_MOMO_UGA' ? 'Sending…' : '📱 MTN Mobile Money' }}
+            </button>
+            <button
+              type="submit"
+              :disabled="submitting"
+              class="rounded-lg bg-babyblue-600 px-3 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-babyblue-700 disabled:cursor-not-allowed disabled:opacity-50"
+              @click="selectedMethod = 'AIRTEL_OAPI_UGA'"
+            >
+              {{ submitting && selectedMethod === 'AIRTEL_OAPI_UGA' ? 'Sending…' : '📱 Airtel Money' }}
+            </button>
+          </div>
+          <div v-else class="grid grid-cols-2 gap-2">
             <button
               type="submit"
               :disabled="submitting"

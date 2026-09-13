@@ -1,24 +1,52 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import DashboardLayout from '@/components/layout/DashboardLayout.vue'
 import * as usersApi from '@/api/users'
 import { useAuthStore } from '@/stores/auth'
 import { extractErrorMessage } from '@/api/client'
+import type { OrganizationCountry, UserProfile } from '@/types/api'
 
 const auth = useAuthStore()
 
 const name = ref(auth.user?.name ?? '')
 const email = ref(auth.user?.email ?? '')
+const country = ref<OrganizationCountry>('KENYA')
+const profile = ref<UserProfile | null>(null)
 const profileError = ref('')
 const profileSuccess = ref(false)
 const savingProfile = ref(false)
+
+const countryOptions: { value: OrganizationCountry; label: string }[] = [
+  { value: 'KENYA', label: '🇰🇪 Kenya — card & M-Pesa via Paystack' },
+  { value: 'UGANDA', label: '🇺🇬 Uganda — MTN & Airtel Money via PawaPay' },
+]
+// Determines the payment provider for this user's personal invoices — locked
+// server-side once a payout method is configured, so the money always
+// routes through a consistent gateway.
+const countryLocked = computed(
+  () => !!(profile.value?.payoutBankName || profile.value?.payoutMobileProvider),
+)
+
+onMounted(async () => {
+  try {
+    profile.value = await usersApi.getMe()
+    country.value = profile.value.country
+  } catch (err) {
+    profileError.value = extractErrorMessage(err)
+  }
+})
 
 async function handleSaveProfile() {
   profileError.value = ''
   profileSuccess.value = false
   savingProfile.value = true
   try {
-    const updated = await usersApi.updateProfile({ name: name.value, email: email.value })
+    const updated = await usersApi.updateProfile({
+      name: name.value,
+      email: email.value,
+      country: country.value,
+    })
+    profile.value = updated
     auth.setSession(
       { id: updated.id, name: updated.name, email: updated.email },
       { accessToken: auth.accessToken!, refreshToken: auth.refreshToken! },
@@ -83,6 +111,16 @@ const primaryButtonClass =
           <div>
             <label class="mb-1 block text-sm font-medium text-slate-700">Email</label>
             <input v-model="email" type="email" required :class="inputClass" />
+          </div>
+          <div>
+            <label class="mb-1 block text-sm font-medium text-slate-700">Country</label>
+            <select v-model="country" :disabled="countryLocked" :class="inputClass">
+              <option v-for="opt in countryOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+            </select>
+            <p class="mt-1 text-xs text-slate-500">
+              Determines the payment provider for your personal invoices.
+              {{ countryLocked ? 'Locked once a payout method is set up.' : 'Cannot be changed after that.' }}
+            </p>
           </div>
           <p v-if="profileError" class="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
             {{ profileError }}

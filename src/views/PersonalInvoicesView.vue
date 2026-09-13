@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue'
 import DashboardLayout from '@/components/layout/DashboardLayout.vue'
 import PayoutSettingsCard from '@/components/PayoutSettingsCard.vue'
+import MobileMoneyPayoutCard from '@/components/MobileMoneyPayoutCard.vue'
 import * as personalInvoicesApi from '@/api/personalInvoices'
 import * as usersApi from '@/api/users'
 import { extractErrorMessage } from '@/api/client'
@@ -60,6 +61,15 @@ async function handleSetPayout(payload: { bankCode: string; bankName: string; ac
   payoutError.value = ''
   try {
     profile.value = await usersApi.setPayout(payload)
+  } catch (err) {
+    payoutError.value = extractErrorMessage(err)
+  }
+}
+
+async function handleSetMobileMoneyPayout(payload: { provider: 'MTN_MOMO_UGA' | 'AIRTEL_OAPI_UGA'; phoneNumber: string }) {
+  payoutError.value = ''
+  try {
+    profile.value = await usersApi.setMobileMoneyPayout(payload)
   } catch (err) {
     payoutError.value = extractErrorMessage(err)
   }
@@ -138,17 +148,25 @@ const outlineButtonClass =
     <div v-else-if="loadError" class="text-sm text-red-600">{{ loadError }}</div>
 
     <template v-else>
-      <!-- Payout bank account -->
+      <!-- Payout -->
       <div class="mb-8">
         <PayoutSettingsCard
-          v-if="profile"
+          v-if="profile && profile.country === 'KENYA'"
           :current="profile"
           title="Payout bank account"
           description="This is where money from your invoices lands."
           @submit="handleSetPayout"
         />
+        <MobileMoneyPayoutCard
+          v-else-if="profile"
+          :current="profile"
+          @submit="handleSetMobileMoneyPayout"
+        />
         <p v-if="payoutError" class="mt-2 text-sm text-red-600">{{ payoutError }}</p>
-        <p v-if="profile && !profile.payoutBankName" class="mt-2 text-xs text-amber-600">
+        <p
+          v-if="profile && !profile.payoutBankName && !profile.payoutMobileProvider"
+          class="mt-2 text-xs text-amber-600"
+        >
           Set this before sending an invoice, or payments will have nowhere to settle.
         </p>
       </div>
