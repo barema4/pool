@@ -7,7 +7,7 @@ export type OrganizationType = 'CHURCH' | 'CHAMA' | 'SACCO' | 'COLLECTIVE' | 'OT
 export type EventStatus = 'DRAFT' | 'ACTIVE' | 'CLOSED' | 'ARCHIVED'
 export type InvoiceStatus = 'PENDING' | 'PARTIALLY_PAID' | 'PAID' | 'EXPIRED'
 export type InvoiceSource = 'ORGANIZER' | 'PUBLIC_PLEDGE'
-export type PaymentRail = 'MOBILE_MONEY' | 'CARD'
+export type PaymentRail = 'MOBILE_MONEY' | 'CARD' | 'MANUAL'
 // What the payer picks on our own pay page for a Kenya/Paystack event —
 // passed through so Paystack's hosted checkout skips straight to that
 // channel instead of showing its own picker.
@@ -161,6 +161,10 @@ export interface Transaction {
   categoryTag: string | null
   status: TransactionStatus
   timestamp: string
+  // Set only for paymentRail: 'MANUAL' — money recorded as received outside
+  // the app. Excluded from Uganda withdrawal balances; still counts toward
+  // an event's collected total and budget-allocation pool.
+  note: string | null
 }
 
 export interface ShareLinks {

@@ -7,6 +7,7 @@ import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { useEventStore } from '@/stores/event'
 import * as budgetCategoriesApi from '@/api/budgetCategories'
 import * as invoicesApi from '@/api/invoices'
+import * as transactionsApi from '@/api/transactions'
 import { extractErrorMessage } from '@/api/client'
 import { formatMoney, formatDate, copyToClipboard, statusBadgeClass, currencyForCountry } from '@/lib/format'
 import type { EventStatus, ShareLinks, ContributorSummary } from '@/types/api'
@@ -403,6 +404,40 @@ async function copyPayLink(invoiceId: string, secureToken: string) {
   if (ok) {
     copiedInvoiceId.value = invoiceId
     setTimeout(() => (copiedInvoiceId.value = null), 2000)
+  }
+}
+
+// --- Manual contributions (cash, or money sent directly to the org's own
+// mobile money number instead of through this app) ---
+const showManualForm = ref(false)
+const manualAmount = ref<number | null>(null)
+const manualNote = ref('')
+const manualError = ref('')
+const recordingManual = ref(false)
+
+function railLabel(rail: string): string {
+  if (rail === 'MOBILE_MONEY') return 'Mobile Money'
+  if (rail === 'MANUAL') return 'Manual'
+  return 'Card'
+}
+
+async function handleRecordManual() {
+  manualError.value = ''
+  recordingManual.value = true
+  try {
+    await transactionsApi.recordManual({
+      eventId,
+      amount: manualAmount.value!,
+      note: manualNote.value || undefined,
+    })
+    manualAmount.value = null
+    manualNote.value = ''
+    showManualForm.value = false
+    await store.refreshTransactions()
+  } catch (err) {
+    manualError.value = extractErrorMessage(err)
+  } finally {
+    recordingManual.value = false
   }
 }
 
@@ -888,6 +923,39 @@ const outlineButtonClass =
 
       <!-- TRANSACTIONS -->
       <section v-else-if="activeTab === 'transactions'">
+        <div class="mb-3 flex items-center justify-between">
+          <p class="text-xs text-slate-500">
+            Money received outside the app (cash, a direct mobile money transfer) counts toward this event's total
+            but can never be withdrawn — only real payments collected through this app can be.
+          </p>
+          <button
+            type="button"
+            :class="[outlineButtonClass, 'shrink-0']"
+            @click="showManualForm = !showManualForm"
+          >
+            {{ showManualForm ? 'Cancel' : '+ Record contribution' }}
+          </button>
+        </div>
+
+        <form
+          v-if="showManualForm"
+          class="mb-4 flex flex-wrap items-end gap-2 rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm"
+          @submit.prevent="handleRecordManual"
+        >
+          <div>
+            <label class="mb-1 block text-xs font-medium text-slate-700">Amount received</label>
+            <input v-model.number="manualAmount" type="number" step="0.01" min="0.01" required :class="inputClass" />
+          </div>
+          <div class="min-w-48 flex-1">
+            <label class="mb-1 block text-xs font-medium text-slate-700">Note (optional)</label>
+            <input v-model="manualNote" placeholder="e.g. Cash offering, Sunday service" :class="inputClass" />
+          </div>
+          <button type="submit" :disabled="recordingManual" :class="primaryButtonClass">
+            {{ recordingManual ? 'Recording…' : 'Record' }}
+          </button>
+          <p v-if="manualError" class="w-full text-sm text-red-600">{{ manualError }}</p>
+        </form>
+
         <div
           v-if="store.transactions.length === 0"
           class="rounded-2xl border border-dashed border-babyblue-200 bg-white/60 p-8 text-center text-sm text-slate-500"
@@ -907,8 +975,18 @@ const outlineButtonClass =
             </thead>
             <tbody class="divide-y divide-babyblue-50">
               <tr v-for="t in store.transactions" :key="t.id">
-                <td class="px-4 py-3 font-mono text-xs">{{ t.providerReference }}</td>
-                <td class="px-4 py-3">{{ t.paymentRail === 'MOBILE_MONEY' ? 'Mobile Money' : 'Card' }}</td>
+                <td class="px-4 py-3 font-mono text-xs">
+                  <span v-if="t.paymentRail === 'MANUAL'">{{ t.note || 'Manual entry' }}</span>
+                  <span v-else>{{ t.providerReference }}</span>
+                </td>
+                <td class="px-4 py-3">
+                  <span
+                    class="rounded-full px-2 py-0.5 text-xs font-medium"
+                    :class="t.paymentRail === 'MANUAL' ? 'bg-amber-100 text-amber-700' : 'bg-babyblue-100 text-babyblue-700'"
+                  >
+                    {{ railLabel(t.paymentRail) }}
+                  </span>
+                </td>
                 <td class="px-4 py-3 font-medium">{{ money(t.amountSettled) }}</td>
                 <td class="px-4 py-3">
                   <span class="rounded-full px-2.5 py-1 text-xs font-medium" :class="statusBadgeClass(t.status)">{{
