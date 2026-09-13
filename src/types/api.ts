@@ -21,11 +21,15 @@ export type OrganizationCountry = 'KENYA' | 'UGANDA'
 // the payer picks instead of PaymentMethod (there is no card option).
 export type MobileMoneyProvider = 'MTN_MOMO_UGA' | 'AIRTEL_OAPI_UGA'
 export type WithdrawalStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED'
+// Platform-operator access (reconciliation, staff management) — distinct
+// from OrgRole, which is scoped per-organization. Null = regular user.
+export type PlatformRole = 'OWNER' | 'STAFF'
 
 export interface AuthUser {
   id: string
   email: string
   name: string
+  platformRole: PlatformRole | null
 }
 
 export interface Bank {
@@ -268,4 +272,32 @@ export interface ApiErrorBody {
   statusCode: number
   message: string | string[]
   error?: string
+}
+
+export interface ProviderBalance {
+  currency: string
+  balance: number
+}
+
+export interface ReconciliationReport {
+  kenya: {
+    liveBalances: ProviderBalance[]
+    expectedPlatformFees: number
+    caveat: string
+  }
+  uganda: {
+    liveBalances: (ProviderBalance & { country: string })[]
+    totalOwedToOrgs: number
+    totalPlatformFees: number
+    expectedTotal: number
+    drift: number
+  }
+}
+
+export interface PlatformStaffMember {
+  id: string
+  name: string
+  email: string
+  platformRole: PlatformRole
+  createdAt: string
 }

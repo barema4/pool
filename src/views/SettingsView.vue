@@ -48,7 +48,7 @@ async function handleSaveProfile() {
     })
     profile.value = updated
     auth.setSession(
-      { id: updated.id, name: updated.name, email: updated.email },
+      { id: updated.id, name: updated.name, email: updated.email, platformRole: updated.platformRole },
       { accessToken: auth.accessToken!, refreshToken: auth.refreshToken! },
     )
     profileSuccess.value = true

@@ -18,16 +18,28 @@ const route = useRoute()
 
 const inviteToken = (route.query.invite as string) || undefined
 const inviteBanner = ref<{ organizationName: string; role: string } | null>(null)
+const staffInviteToken = (route.query.staffInvite as string) || undefined
+const staffInviteBanner = ref<{ email: string } | null>(null)
 
 onMounted(async () => {
-  if (!inviteToken) return
-  try {
-    const invitation = await publicApi.getOrganizationInvitation(inviteToken)
-    inviteBanner.value = { organizationName: invitation.organizationName, role: invitation.role }
-    email.value = invitation.email
-  } catch {
-    // Bad/expired/consumed invite token — fall back to a normal, unprefilled
-    // registration; never block signup over a stale invite link.
+  if (inviteToken) {
+    try {
+      const invitation = await publicApi.getOrganizationInvitation(inviteToken)
+      inviteBanner.value = { organizationName: invitation.organizationName, role: invitation.role }
+      email.value = invitation.email
+    } catch {
+      // Bad/expired/consumed invite token — fall back to a normal, unprefilled
+      // registration; never block signup over a stale invite link.
+    }
+  }
+  if (staffInviteToken) {
+    try {
+      const invitation = await publicApi.getStaffInvitation(staffInviteToken)
+      staffInviteBanner.value = { email: invitation.email }
+      email.value = invitation.email
+    } catch {
+      // Same never-block-signup contract as the organization invite above.
+    }
   }
 })
 
@@ -40,6 +52,7 @@ async function handleSubmit() {
       email: email.value,
       password: password.value,
       inviteToken,
+      staffInviteToken,
     })
     auth.setSession(user, { accessToken, refreshToken })
     router.push({ name: 'organizations' })
@@ -73,6 +86,12 @@ async function handleSubmit() {
         You're invited to join <strong>{{ inviteBanner.organizationName }}</strong> as
         {{ inviteBanner.role }}.
       </p>
+      <p
+        v-if="staffInviteBanner"
+        class="mb-4 rounded-lg bg-babyblue-50 px-3 py-2 text-sm text-babyblue-700"
+      >
+        You're invited to join the <strong>OpenPool team</strong>.
+      </p>
 
       <form class="space-y-4" @submit.prevent="handleSubmit">
         <div>
@@ -90,9 +109,9 @@ async function handleSubmit() {
             v-model="email"
             type="email"
             required
-            :readonly="!!inviteBanner"
+            :readonly="!!inviteBanner || !!staffInviteBanner"
             class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm text-slate-900 transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none disabled:bg-babyblue-50"
-            :class="{ 'bg-babyblue-50 text-slate-500': inviteBanner }"
+            :class="{ 'bg-babyblue-50 text-slate-500': inviteBanner || staffInviteBanner }"
           />
         </div>
         <div>

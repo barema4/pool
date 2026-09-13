@@ -69,6 +69,20 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
 
+    // Platform-admin dashboard — gated by platformRole, not org membership.
+    {
+      path: '/admin/reconciliation',
+      name: 'admin-reconciliation',
+      component: () => import('@/views/AdminReconciliationView.vue'),
+      meta: { requiresAuth: true, requiresPlatformRole: ['OWNER', 'STAFF'] },
+    },
+    {
+      path: '/admin/staff',
+      name: 'admin-staff',
+      component: () => import('@/views/AdminStaffView.vue'),
+      meta: { requiresAuth: true, requiresPlatformRole: ['OWNER'] },
+    },
+
     {
       path: '/:pathMatch(.*)*',
       name: 'not-found',
@@ -84,6 +98,13 @@ router.beforeEach((to) => {
   }
   if ((to.name === 'login' || to.name === 'register') && auth.isAuthenticated) {
     return { name: 'organizations' }
+  }
+  const requiredPlatformRoles = to.meta.requiresPlatformRole as string[] | undefined
+  if (requiredPlatformRoles) {
+    const role = auth.user?.platformRole
+    if (!role || !requiredPlatformRoles.includes(role)) {
+      return { name: 'organizations' }
+    }
   }
   return true
 })

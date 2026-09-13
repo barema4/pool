@@ -65,3 +65,9 @@ export function getOrganizationInvitation(token: string) {
     )
     .then((r) => r.data)
 }
+
+export function getStaffInvitation(token: string) {
+  return publicApiClient
+    .get<{ email: string }>(`/public/platform-staff-invitations/${token}`)
+    .then((r) => r.data)
+}

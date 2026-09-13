@@ -6,6 +6,7 @@ export function register(payload: {
   password: string
   name: string
   inviteToken?: string
+  staffInviteToken?: string
 }) {
   return publicApiClient.post<AuthResponse>('/auth/register', payload).then((r) => r.data)
 }
