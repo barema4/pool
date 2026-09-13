@@ -25,3 +25,7 @@ export function allocate(budgetCategoryId: string, payload: { amount: number }) 
     .post(`/budget-categories/${budgetCategoryId}/allocate`, payload)
     .then((r) => r.data)
 }
+
+export function remove(budgetCategoryId: string) {
+  return apiClient.delete(`/budget-categories/${budgetCategoryId}`).then((r) => r.data)
+}

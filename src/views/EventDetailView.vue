@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import DashboardLayout from '@/components/layout/DashboardLayout.vue'
 import PayoutSettingsCard from '@/components/PayoutSettingsCard.vue'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { useEventStore } from '@/stores/event'
 import * as budgetCategoriesApi from '@/api/budgetCategories'
 import * as invoicesApi from '@/api/invoices'
@@ -263,6 +264,40 @@ async function handleAllocate(categoryId: string) {
     await store.refreshBudgetCategories()
   } catch (err) {
     allocateError.value = extractErrorMessage(err)
+  }
+}
+
+const deletingCategoryId = ref<string | null>(null)
+const deleteError = ref('')
+// Separate from deletingCategoryId (a loading flag, cleared in `finally`
+// before the error message would ever get a chance to render against it).
+const deleteErrorCategoryId = ref<string | null>(null)
+const categoryPendingDelete = ref<{ id: string; name: string } | null>(null)
+const deleteConfirmMessage = computed(() =>
+  categoryPendingDelete.value
+    ? `Delete "${categoryPendingDelete.value.name}"? Any funds allocated to it return to the unallocated pool.`
+    : '',
+)
+
+function handleDeleteCategory(category: { id: string; name: string }) {
+  categoryPendingDelete.value = category
+}
+
+async function confirmDeleteCategory() {
+  const category = categoryPendingDelete.value
+  if (!category) return
+  categoryPendingDelete.value = null
+  deleteError.value = ''
+  deleteErrorCategoryId.value = null
+  deletingCategoryId.value = category.id
+  try {
+    await budgetCategoriesApi.remove(category.id)
+    await store.refreshBudgetCategories()
+  } catch (err) {
+    deleteError.value = extractErrorMessage(err)
+    deleteErrorCategoryId.value = category.id
+  } finally {
+    deletingCategoryId.value = null
   }
 }
 
@@ -627,6 +662,14 @@ const outlineButtonClass =
                   <button type="button" :class="outlineButtonClass" @click="openAllocate(cat.id)">
                     {{ allocatingCategoryId === cat.id ? 'Cancel' : 'Allocate' }}
                   </button>
+                  <button
+                    type="button"
+                    :disabled="deletingCategoryId === cat.id"
+                    class="rounded-lg border border-red-200 px-2.5 py-1.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    @click="handleDeleteCategory(cat)"
+                  >
+                    {{ deletingCategoryId === cat.id ? 'Deleting…' : 'Delete' }}
+                  </button>
                 </div>
               </div>
 
@@ -678,6 +721,9 @@ const outlineButtonClass =
               </div>
               <p v-if="allocatingCategoryId === cat.id && allocateError" class="mt-2 text-sm text-red-600">
                 {{ allocateError }}
+              </p>
+              <p v-if="deleteErrorCategoryId === cat.id" class="mt-2 text-sm text-red-600">
+                {{ deleteError }}
               </p>
             </li>
           </ul>
@@ -934,5 +980,15 @@ const outlineButtonClass =
         </template>
       </section>
     </template>
+
+    <ConfirmDialog
+      :open="!!categoryPendingDelete"
+      title="Delete category?"
+      :message="deleteConfirmMessage"
+      confirm-label="Delete"
+      danger
+      @confirm="confirmDeleteCategory"
+      @cancel="categoryPendingDelete = null"
+    />
   </DashboardLayout>
 </template>
