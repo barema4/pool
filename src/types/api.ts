@@ -149,6 +149,12 @@ export interface PublicInvoiceView extends Invoice {
     isPermanent: boolean
     organization: { country: OrganizationCountry } | null
   }
+  platformFeePercent: number
+  // Only set for a fixed-amount invoice (amountRequested !== null) — an
+  // open/permanent link has no amount to precompute a fee against yet, so
+  // the payer page computes a live preview itself off platformFeePercent.
+  platformFeeAmount?: number
+  totalChargeAmount?: number
 }
 
 export interface Transaction {
@@ -207,6 +213,8 @@ export interface CheckoutResult {
 export interface Receipt {
   receiptNumber: string
   amountPaid: number
+  platformFeeAmount: number
+  totalCharged: number
   paymentRail: PaymentRail
   paidAt: string
   payerName: string | null
@@ -234,6 +242,9 @@ export interface PersonalInvoice {
 
 export interface PublicPersonalInvoiceView extends PersonalInvoice {
   issuer: { id: string; name: string; country: OrganizationCountry }
+  platformFeePercent: number
+  platformFeeAmount: number
+  totalChargeAmount: number
 }
 
 export interface Withdrawal {

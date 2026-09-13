@@ -11,6 +11,13 @@ export function currencyForCountry(country: 'KENYA' | 'UGANDA' | null | undefine
   return country === 'UGANDA' ? 'UGX' : 'KES'
 }
 
+// Live preview only, for an open-amount link where the payer hasn't chosen
+// an amount yet — the actual charge is always computed authoritatively by
+// the backend. Mirrors calculatePlatformFee in the NestJS backend.
+export function calculatePlatformFee(baseAmount: number, feePercent: number): number {
+  return Math.round(baseAmount * (feePercent / 100) * 100) / 100
+}
+
 export function formatDate(value: string | null | undefined): string {
   if (!value) return '—'
   return new Date(value).toLocaleString()

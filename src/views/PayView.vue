@@ -3,7 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import * as publicApi from '@/api/public'
 import { extractErrorMessage } from '@/api/client'
-import { formatMoney, copyToClipboard, currencyForCountry } from '@/lib/format'
+import { formatMoney, copyToClipboard, currencyForCountry, calculatePlatformFee } from '@/lib/format'
 import type { PublicInvoiceView, Invoice, PaymentMethod, MobileMoneyProvider } from '@/types/api'
 
 const route = useRoute()
@@ -47,6 +47,17 @@ const remaining = computed(() => {
 const isClosed = computed(
   () => invoice.value?.status === 'PAID' || invoice.value?.status === 'EXPIRED',
 )
+
+// Live preview, reactive to whatever the payer currently has entered
+// (partial payments are allowed even on a fixed-amount invoice, so a
+// backend-precomputed fee off the full remaining balance would go stale the
+// moment they edit the amount down). The actual charge is always computed
+// authoritatively server-side regardless of what this shows.
+const feeAmount = computed(() => {
+  if (!invoice.value || !amount.value) return 0
+  return calculatePlatformFee(amount.value, invoice.value.platformFeePercent)
+})
+const totalToPay = computed(() => (amount.value ?? 0) + feeAmount.value)
 
 onMounted(async () => {
   try {
@@ -283,6 +294,19 @@ async function copyPledgeLink() {
               <p v-if="remaining !== null" class="mt-1 text-xs text-slate-500">
                 You can pay this off in full or leave a smaller partial amount.
               </p>
+              <div
+                v-if="feeAmount > 0"
+                class="mt-2 space-y-1 rounded-lg bg-babyblue-50 px-3 py-2 text-xs text-slate-600"
+              >
+                <div class="flex justify-between">
+                  <span>Platform fee ({{ invoice.platformFeePercent }}%)</span>
+                  <span>{{ money(feeAmount) }}</span>
+                </div>
+                <div class="flex justify-between font-semibold text-babyblue-700">
+                  <span>Total to pay</span>
+                  <span>{{ money(totalToPay) }}</span>
+                </div>
+              </div>
             </div>
             <p v-else class="text-xs text-slate-500">
               No amount needed — this just lets the organizer know you're contributing. You'll get a personal link

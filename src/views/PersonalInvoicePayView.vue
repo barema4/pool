@@ -110,7 +110,21 @@ async function handleSubmit() {
         </div>
 
         <form v-else class="mt-6 space-y-4" @submit.prevent="handleSubmit">
-          <div class="rounded-xl bg-babyblue-50 p-4 text-sm">
+          <div v-if="invoice.platformFeeAmount > 0" class="rounded-xl bg-babyblue-50 p-4 text-sm">
+            <div class="flex justify-between text-slate-600">
+              <span>Amount</span>
+              <span>{{ money(invoice.amount) }}</span>
+            </div>
+            <div class="flex justify-between text-slate-600">
+              <span>Platform fee ({{ invoice.platformFeePercent }}%)</span>
+              <span>{{ money(invoice.platformFeeAmount) }}</span>
+            </div>
+            <div class="mt-1 flex justify-between border-t border-babyblue-100 pt-1 font-semibold text-babyblue-700">
+              <span>Total to pay</span>
+              <span>{{ money(invoice.totalChargeAmount) }}</span>
+            </div>
+          </div>
+          <div v-else class="rounded-xl bg-babyblue-50 p-4 text-sm">
             <div class="flex justify-between font-semibold text-babyblue-700">
               <span>Amount due</span>
               <span>{{ money(invoice.amount) }}</span>

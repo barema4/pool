@@ -84,6 +84,14 @@ onMounted(load)
             <dt class="text-slate-500">Amount paid</dt>
             <dd class="font-semibold text-babyblue-700">{{ formatMoney(receipt.amountPaid) }}</dd>
           </div>
+          <div v-if="receipt.platformFeeAmount > 0" class="flex justify-between">
+            <dt class="text-slate-500">Platform fee</dt>
+            <dd class="text-slate-900">{{ formatMoney(receipt.platformFeeAmount) }}</dd>
+          </div>
+          <div v-if="receipt.platformFeeAmount > 0" class="flex justify-between font-semibold text-babyblue-700">
+            <dt>Total charged</dt>
+            <dd>{{ formatMoney(receipt.totalCharged) }}</dd>
+          </div>
           <div class="flex justify-between">
             <dt class="text-slate-500">Payment method</dt>
             <dd class="text-slate-900">
