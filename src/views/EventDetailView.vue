@@ -496,7 +496,11 @@ const outlineButtonClass =
           </select>
         </div>
 
-        <div class="border-t border-babyblue-100 pt-4">
+        <div v-if="store.event.organization?.country === 'UGANDA'" class="border-t border-babyblue-100 pt-4 text-sm text-slate-500">
+          Payouts for Uganda events are managed on the organization page — see its mobile money number and
+          Withdrawals section.
+        </div>
+        <div v-else class="border-t border-babyblue-100 pt-4">
           <PayoutSettingsCard
             :current="store.event"
             title="Payout override (optional)"
