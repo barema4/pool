@@ -1026,6 +1026,18 @@ const outlineButtonClass =
                   <span class="rounded-full px-2.5 py-1 text-xs font-medium" :class="statusBadgeClass(t.status)">{{
                     t.status
                   }}</span>
+                  <span
+                    v-if="t.disputes.some((d) => d.status !== 'RESOLVED')"
+                    class="ml-1 rounded-full bg-red-100 px-2.5 py-1 text-xs font-medium text-red-700"
+                  >
+                    ⚠️ Disputed
+                  </span>
+                  <span
+                    v-else-if="t.disputes.length > 0"
+                    class="ml-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600"
+                  >
+                    Dispute resolved
+                  </span>
                   <p v-if="refundErrorTransactionId === t.id" class="mt-1 text-xs text-red-600">{{ refundError }}</p>
                 </td>
                 <td class="px-4 py-3 text-xs text-slate-500">{{ formatDate(t.timestamp) }}</td>

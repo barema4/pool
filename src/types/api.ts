@@ -175,6 +175,10 @@ export interface Transaction {
   // the app. Excluded from Uganda withdrawal balances; still counts toward
   // an event's collected total and budget-allocation pool.
   note: string | null
+  // Kenya/Paystack only — a chargeback against this transaction. An open
+  // dispute doesn't affect amountSettled/status; only a resolution of
+  // 'merchant-accepted' (lost) flips the transaction to REFUNDED separately.
+  disputes: { status: string; resolution: string | null }[]
 }
 
 export interface ShareLinks {
