@@ -5,6 +5,7 @@ import * as authApi from '@/api/auth'
 import * as publicApi from '@/api/public'
 import { useAuthStore } from '@/stores/auth'
 import { extractErrorMessage } from '@/api/client'
+import AuthBrandPanel from '@/components/AuthBrandPanel.vue'
 
 const name = ref('')
 const email = ref('')
@@ -65,80 +66,82 @@ async function handleSubmit() {
 </script>
 
 <template>
-  <div
-    class="flex min-h-screen items-center justify-center bg-gradient-to-br from-babyblue-50 via-white to-babyblue-100 px-4"
-  >
-    <div class="w-full max-w-sm rounded-2xl border border-babyblue-100 bg-white p-8 shadow-lg shadow-babyblue-100">
-      <div class="mb-6 flex flex-col items-center text-center">
-        <span
-          class="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-babyblue-500 text-lg font-bold text-white shadow-sm"
+  <div class="flex min-h-screen bg-white">
+    <AuthBrandPanel />
+
+    <div class="flex w-full flex-col items-center justify-center bg-babyblue-50 px-4 py-12 lg:w-1/2">
+      <div class="w-full max-w-sm rounded-2xl border border-babyblue-100 bg-white p-8 shadow-lg shadow-babyblue-100">
+        <div class="mb-6 flex flex-col items-center text-center">
+          <span
+            class="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-babyblue-500 text-lg font-bold text-white shadow-sm lg:hidden"
+          >
+            OP
+          </span>
+          <h1 class="text-xl font-semibold text-slate-900">Create your account</h1>
+          <p class="mt-1 text-sm text-slate-500">Start pooling contributions in minutes</p>
+        </div>
+
+        <p
+          v-if="inviteBanner"
+          class="mb-4 rounded-lg bg-babyblue-50 px-3 py-2 text-sm text-babyblue-700"
         >
-          OP
-        </span>
-        <h1 class="text-xl font-semibold text-slate-900">Create your account</h1>
-        <p class="mt-1 text-sm text-slate-500">Start pooling contributions in minutes</p>
+          You're invited to join <strong>{{ inviteBanner.organizationName }}</strong> as
+          {{ inviteBanner.role }}.
+        </p>
+        <p
+          v-if="staffInviteBanner"
+          class="mb-4 rounded-lg bg-babyblue-50 px-3 py-2 text-sm text-babyblue-700"
+        >
+          You're invited to join the <strong>OpenPool team</strong>.
+        </p>
+
+        <form class="space-y-4" @submit.prevent="handleSubmit">
+          <div>
+            <label class="mb-1 block text-sm font-medium text-slate-700">Name</label>
+            <input
+              v-model="name"
+              type="text"
+              required
+              class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm text-slate-900 transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none"
+            />
+          </div>
+          <div>
+            <label class="mb-1 block text-sm font-medium text-slate-700">Email</label>
+            <input
+              v-model="email"
+              type="email"
+              required
+              :readonly="!!inviteBanner || !!staffInviteBanner"
+              class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm text-slate-900 transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none disabled:bg-babyblue-50"
+              :class="{ 'bg-babyblue-50 text-slate-500': inviteBanner || staffInviteBanner }"
+            />
+          </div>
+          <div>
+            <label class="mb-1 block text-sm font-medium text-slate-700">Password</label>
+            <input
+              v-model="password"
+              type="password"
+              required
+              minlength="8"
+              class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm text-slate-900 transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none"
+            />
+          </div>
+          <p v-if="error" class="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{{ error }}</p>
+          <button
+            type="submit"
+            :disabled="loading"
+            class="w-full rounded-lg bg-babyblue-600 px-3 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-babyblue-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {{ loading ? 'Creating account…' : 'Register' }}
+          </button>
+        </form>
+        <p class="mt-6 text-center text-sm text-slate-500">
+          Already have an account?
+          <RouterLink :to="{ name: 'login' }" class="font-medium text-babyblue-600 hover:text-babyblue-700"
+            >Log in</RouterLink
+          >
+        </p>
       </div>
-
-      <p
-        v-if="inviteBanner"
-        class="mb-4 rounded-lg bg-babyblue-50 px-3 py-2 text-sm text-babyblue-700"
-      >
-        You're invited to join <strong>{{ inviteBanner.organizationName }}</strong> as
-        {{ inviteBanner.role }}.
-      </p>
-      <p
-        v-if="staffInviteBanner"
-        class="mb-4 rounded-lg bg-babyblue-50 px-3 py-2 text-sm text-babyblue-700"
-      >
-        You're invited to join the <strong>OpenPool team</strong>.
-      </p>
-
-      <form class="space-y-4" @submit.prevent="handleSubmit">
-        <div>
-          <label class="mb-1 block text-sm font-medium text-slate-700">Name</label>
-          <input
-            v-model="name"
-            type="text"
-            required
-            class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm text-slate-900 transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none"
-          />
-        </div>
-        <div>
-          <label class="mb-1 block text-sm font-medium text-slate-700">Email</label>
-          <input
-            v-model="email"
-            type="email"
-            required
-            :readonly="!!inviteBanner || !!staffInviteBanner"
-            class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm text-slate-900 transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none disabled:bg-babyblue-50"
-            :class="{ 'bg-babyblue-50 text-slate-500': inviteBanner || staffInviteBanner }"
-          />
-        </div>
-        <div>
-          <label class="mb-1 block text-sm font-medium text-slate-700">Password</label>
-          <input
-            v-model="password"
-            type="password"
-            required
-            minlength="8"
-            class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm text-slate-900 transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none"
-          />
-        </div>
-        <p v-if="error" class="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{{ error }}</p>
-        <button
-          type="submit"
-          :disabled="loading"
-          class="w-full rounded-lg bg-babyblue-600 px-3 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-babyblue-700 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {{ loading ? 'Creating account…' : 'Register' }}
-        </button>
-      </form>
-      <p class="mt-6 text-center text-sm text-slate-500">
-        Already have an account?
-        <RouterLink :to="{ name: 'login' }" class="font-medium text-babyblue-600 hover:text-babyblue-700"
-          >Log in</RouterLink
-        >
-      </p>
     </div>
   </div>
 </template>
