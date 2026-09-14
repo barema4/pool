@@ -1,16 +1,27 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import DashboardLayout from '@/components/layout/DashboardLayout.vue'
 import PayoutSettingsCard from '@/components/PayoutSettingsCard.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import PaginationControls from '@/components/PaginationControls.vue'
 import { useEventStore } from '@/stores/event'
 import * as budgetCategoriesApi from '@/api/budgetCategories'
 import * as invoicesApi from '@/api/invoices'
 import * as transactionsApi from '@/api/transactions'
 import { extractErrorMessage } from '@/api/client'
 import { formatMoney, formatDate, copyToClipboard, statusBadgeClass, currencyForCountry } from '@/lib/format'
-import type { EventStatus, ShareLinks, ContributorSummary } from '@/types/api'
+import type {
+  EventStatus,
+  ShareLinks,
+  ContributorSummary,
+  Invoice,
+  InvoiceStatus,
+  InvoiceSource,
+  Transaction,
+  TransactionStatus,
+  PaymentRail,
+} from '@/types/api'
 
 const route = useRoute()
 const eventId = route.params.eventId as string
@@ -35,11 +46,9 @@ function money(value: string | number | null | undefined): string {
   return formatMoney(value, currency.value)
 }
 
-const totalReceived = computed(() =>
-  store.transactions
-    .filter((t) => t.status === 'SUCCESS')
-    .reduce((sum, t) => sum + Number(t.amountSettled), 0),
-)
+// Computed server-side (sum of SUCCESS transactions) — the transactions
+// list below is paginated, so it can no longer be summed client-side.
+const totalReceived = computed(() => Number(store.event?.totalReceived ?? 0))
 const goalProgressPct = computed(() => {
   if (!store.event?.targetGoal) return null
   const goal = Number(store.event.targetGoal)
@@ -59,7 +68,7 @@ const allocatedProgressPct = computed(() => {
 
 onMounted(async () => {
   try {
-    await store.load(eventId)
+    await Promise.all([store.load(eventId), loadPrimaryLink()])
     title.value = store.event?.title ?? ''
     description.value = store.event?.description ?? ''
     coverImageUrl.value = store.event?.coverImageUrl ?? ''
@@ -308,22 +317,15 @@ function categoryProgressPct(allocated: string, estimated: string): number {
   return Math.min(100, Math.round((Number(allocated) / est) * 100))
 }
 
-// --- Invoices ---
+// --- Invoices ("Links" tab) ---
 // The event's own default link (auto-created alongside the event — see
-// EventsService#create) is permanent and has no expiry; it's always the
-// earliest such link. Surfacing it up front means a quick-collection
-// organizer never has to hunt through "+ Generate link" for the one link
-// they already have — they just copy it.
-const primaryLink = computed(() => {
-  const permanent = store.invoices
-    .filter((inv) => inv.expiresAt === null)
-    .slice()
-    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
-  return permanent[0] ?? null
-})
-const otherInvoices = computed(() =>
-  store.invoices.filter((inv) => inv.id !== primaryLink.value?.id),
-)
+// EventsService#create) is permanent and has no expiry. Fetched eagerly on
+// mount (not lazily on tab activation) since onMounted needs it immediately
+// to auto-load its share links regardless of which tab is open first.
+const primaryLink = ref<Invoice | null>(null)
+async function loadPrimaryLink() {
+  primaryLink.value = await invoicesApi.getPrimaryLink(eventId)
+}
 
 const showInvoiceForm = ref(false)
 const showLinkCustomize = ref(false)
@@ -351,6 +353,69 @@ function shareLinksFor(invoiceId: string): ShareLinks {
   return shareLinksByInvoice.value[invoiceId] ?? emptyShareLinks
 }
 
+// Paginated, searchable, filterable "everything else" list — the primary
+// link above is always excluded server-side so it never shows twice.
+const invoices = ref<Invoice[]>([])
+const invPage = ref(1)
+const INV_PAGE_SIZE = 25
+const invTotal = ref(0)
+const invTotalPages = ref(1)
+const invSearch = ref('')
+const invStatusFilter = ref<InvoiceStatus | ''>('')
+const invSourceFilter = ref<InvoiceSource | ''>('')
+const invDateFrom = ref('')
+const invDateTo = ref('')
+const invListLoading = ref(false)
+const invListError = ref('')
+const invLoadedOnce = ref(false)
+const invHasActiveFilter = computed(
+  () =>
+    !!(invSearch.value || invStatusFilter.value || invSourceFilter.value || invDateFrom.value || invDateTo.value),
+)
+
+async function loadInvoices() {
+  invListLoading.value = true
+  invListError.value = ''
+  try {
+    const result = await invoicesApi.listForEvent({
+      eventId,
+      page: invPage.value,
+      pageSize: INV_PAGE_SIZE,
+      search: invSearch.value || undefined,
+      status: invStatusFilter.value === '' ? undefined : invStatusFilter.value,
+      source: invSourceFilter.value === '' ? undefined : invSourceFilter.value,
+      dateFrom: invDateFrom.value || undefined,
+      dateTo: invDateTo.value || undefined,
+    })
+    invoices.value = result.data
+    invTotal.value = result.total
+    invTotalPages.value = result.totalPages
+  } catch (err) {
+    invListError.value = extractErrorMessage(err)
+  } finally {
+    invListLoading.value = false
+  }
+}
+
+function goToInvPage(page: number) {
+  if (page < 1 || page > invTotalPages.value) return
+  invPage.value = page
+  loadInvoices()
+}
+
+let invSearchTimer: ReturnType<typeof setTimeout> | undefined
+watch(invSearch, () => {
+  clearTimeout(invSearchTimer)
+  invSearchTimer = setTimeout(() => {
+    invPage.value = 1
+    loadInvoices()
+  }, 350)
+})
+watch([invStatusFilter, invSourceFilter, invDateFrom, invDateTo], () => {
+  invPage.value = 1
+  loadInvoices()
+})
+
 async function handleCreateInvoice() {
   invoiceError.value = ''
   creatingInvoice.value = true
@@ -372,7 +437,7 @@ async function handleCreateInvoice() {
     invIsPermanent.value = false
     showInvoiceForm.value = false
     showLinkCustomize.value = false
-    await store.refreshInvoices()
+    await loadInvoices()
   } catch (err) {
     invoiceError.value = extractErrorMessage(err)
   } finally {
@@ -407,6 +472,80 @@ async function copyPayLink(invoiceId: string, secureToken: string) {
   }
 }
 
+// --- Transactions (paginated, searchable, filterable) ---
+const transactions = ref<Transaction[]>([])
+const txPage = ref(1)
+const TX_PAGE_SIZE = 25
+const txTotal = ref(0)
+const txTotalPages = ref(1)
+const txSearch = ref('')
+const txStatusFilter = ref<TransactionStatus | ''>('')
+const txRailFilter = ref<PaymentRail | ''>('')
+const txDateFrom = ref('')
+const txDateTo = ref('')
+const txListLoading = ref(false)
+const txListError = ref('')
+const txLoadedOnce = ref(false)
+const txHasActiveFilter = computed(
+  () => !!(txSearch.value || txStatusFilter.value || txRailFilter.value || txDateFrom.value || txDateTo.value),
+)
+
+async function loadTransactions() {
+  txListLoading.value = true
+  txListError.value = ''
+  try {
+    const result = await transactionsApi.listForEvent({
+      eventId,
+      page: txPage.value,
+      pageSize: TX_PAGE_SIZE,
+      search: txSearch.value || undefined,
+      status: txStatusFilter.value === '' ? undefined : txStatusFilter.value,
+      paymentRail: txRailFilter.value === '' ? undefined : txRailFilter.value,
+      dateFrom: txDateFrom.value || undefined,
+      dateTo: txDateTo.value || undefined,
+    })
+    transactions.value = result.data
+    txTotal.value = result.total
+    txTotalPages.value = result.totalPages
+  } catch (err) {
+    txListError.value = extractErrorMessage(err)
+  } finally {
+    txListLoading.value = false
+  }
+}
+
+function goToTxPage(page: number) {
+  if (page < 1 || page > txTotalPages.value) return
+  txPage.value = page
+  loadTransactions()
+}
+
+let txSearchTimer: ReturnType<typeof setTimeout> | undefined
+watch(txSearch, () => {
+  clearTimeout(txSearchTimer)
+  txSearchTimer = setTimeout(() => {
+    txPage.value = 1
+    loadTransactions()
+  }, 350)
+})
+watch([txStatusFilter, txRailFilter, txDateFrom, txDateTo], () => {
+  txPage.value = 1
+  loadTransactions()
+})
+
+function selectTab(tab: Tab) {
+  activeTab.value = tab
+  if (tab === 'contributors' && !contributorSummary.value) loadContributors()
+  if (tab === 'transactions' && !txLoadedOnce.value) {
+    txLoadedOnce.value = true
+    loadTransactions()
+  }
+  if (tab === 'invoices' && !invLoadedOnce.value) {
+    invLoadedOnce.value = true
+    loadInvoices()
+  }
+}
+
 // --- Manual contributions (cash, or money sent directly to the org's own
 // mobile money number instead of through this app) ---
 const showManualForm = ref(false)
@@ -433,7 +572,9 @@ async function handleRecordManual() {
     manualAmount.value = null
     manualNote.value = ''
     showManualForm.value = false
-    await store.refreshTransactions()
+    // Refetch this page of the list plus the event (its server-computed
+    // totalReceived) so both the table and the header/budget numbers stay live.
+    await Promise.all([loadTransactions(), store.refreshEvent()])
   } catch (err) {
     manualError.value = extractErrorMessage(err)
   } finally {
@@ -465,7 +606,7 @@ async function confirmRefund() {
   refundingTransactionId.value = t.id
   try {
     await transactionsApi.refund(t.id)
-    await store.refreshTransactions()
+    await Promise.all([loadTransactions(), store.refreshEvent()])
   } catch (err) {
     refundError.value = extractErrorMessage(err)
     refundErrorTransactionId.value = t.id
@@ -490,11 +631,6 @@ async function loadContributors() {
   } finally {
     contributorsLoading.value = false
   }
-}
-
-function selectTab(tab: Tab) {
-  activeTab.value = tab
-  if (tab === 'contributors' && !contributorSummary.value) loadContributors()
 }
 
 async function handleCopySummary() {
@@ -892,66 +1028,114 @@ const outlineButtonClass =
           </button>
         </form>
 
+        <!-- Filter bar -->
+        <div class="mb-3 flex flex-wrap items-end gap-2 rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm">
+          <div class="min-w-48 flex-1">
+            <label class="mb-1 block text-xs font-medium text-slate-700">Search</label>
+            <input v-model="invSearch" placeholder="Contributor name, email, or phone" :class="inputClass" />
+          </div>
+          <div>
+            <label class="mb-1 block text-xs font-medium text-slate-700">Status</label>
+            <select v-model="invStatusFilter" :class="inputClass" class="w-auto">
+              <option value="">All</option>
+              <option value="PENDING">Pending</option>
+              <option value="PARTIALLY_PAID">Partially paid</option>
+              <option value="PAID">Paid</option>
+              <option value="EXPIRED">Expired</option>
+            </select>
+          </div>
+          <div>
+            <label class="mb-1 block text-xs font-medium text-slate-700">Source</label>
+            <select v-model="invSourceFilter" :class="inputClass" class="w-auto">
+              <option value="">All</option>
+              <option value="ORGANIZER">Organizer</option>
+              <option value="PUBLIC_PLEDGE">Public pledge</option>
+            </select>
+          </div>
+          <div>
+            <label class="mb-1 block text-xs font-medium text-slate-700">From</label>
+            <input v-model="invDateFrom" type="date" :class="inputClass" class="w-auto" />
+          </div>
+          <div>
+            <label class="mb-1 block text-xs font-medium text-slate-700">To</label>
+            <input v-model="invDateTo" type="date" :class="inputClass" class="w-auto" />
+          </div>
+        </div>
+        <p v-if="invListError" class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{{ invListError }}</p>
+
+        <div v-if="invListLoading" class="rounded-2xl border border-babyblue-100 bg-white/60 p-8 text-center text-sm text-slate-500">
+          Loading…
+        </div>
         <div
-          v-if="otherInvoices.length === 0"
+          v-else-if="invoices.length === 0"
           class="rounded-2xl border border-dashed border-babyblue-200 bg-white/60 p-8 text-center text-sm text-slate-500"
         >
-          No additional links yet.
+          {{ invHasActiveFilter ? 'No links match your filters.' : 'No additional links yet.' }}
         </div>
-        <ul v-else class="space-y-2">
-          <li v-for="inv in otherInvoices" :key="inv.id" class="rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm">
-            <div class="flex flex-wrap items-center justify-between gap-2">
-              <div class="min-w-0">
-                <p class="truncate font-medium text-slate-900">
-                  {{ inv.contributorName ?? 'Open link' }}
-                  <span class="ml-1 text-xs font-normal text-slate-400">({{ inv.source }})</span>
-                </p>
-                <p class="text-xs text-slate-500">
-                  {{ money(inv.amountPaid) }}
-                  <span v-if="inv.amountRequested"> of {{ money(inv.amountRequested) }}</span>
-                </p>
+        <template v-else>
+          <ul class="space-y-2">
+            <li v-for="inv in invoices" :key="inv.id" class="rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div class="min-w-0">
+                  <p class="truncate font-medium text-slate-900">
+                    {{ inv.contributorName ?? 'Open link' }}
+                    <span class="ml-1 text-xs font-normal text-slate-400">({{ inv.source }})</span>
+                  </p>
+                  <p class="text-xs text-slate-500">
+                    {{ money(inv.amountPaid) }}
+                    <span v-if="inv.amountRequested"> of {{ money(inv.amountRequested) }}</span>
+                  </p>
+                </div>
+                <div class="flex shrink-0 items-center gap-2">
+                  <span class="rounded-full px-2.5 py-1 text-xs font-medium" :class="statusBadgeClass(inv.status)">{{
+                    inv.status
+                  }}</span>
+                  <button type="button" :class="outlineButtonClass" @click="toggleShareLinks(inv.id)">
+                    {{ shareLinksByInvoice[inv.id] ? 'Hide' : 'Share' }}
+                  </button>
+                </div>
               </div>
-              <div class="flex shrink-0 items-center gap-2">
-                <span class="rounded-full px-2.5 py-1 text-xs font-medium" :class="statusBadgeClass(inv.status)">{{
-                  inv.status
-                }}</span>
-                <button type="button" :class="outlineButtonClass" @click="toggleShareLinks(inv.id)">
-                  {{ shareLinksByInvoice[inv.id] ? 'Hide' : 'Share' }}
+
+              <div v-if="shareLoadingId === inv.id" class="mt-2 text-xs text-slate-400">Loading links…</div>
+              <div
+                v-else-if="shareLinksByInvoice[inv.id]"
+                class="mt-3 flex flex-wrap items-center gap-2 border-t border-babyblue-100 pt-3 text-xs"
+              >
+                <a
+                  v-if="shareLinksFor(inv.id).whatsapp.available"
+                  :href="shareLinksFor(inv.id).whatsapp.url || undefined"
+                  target="_blank"
+                  rel="noopener"
+                  class="rounded-lg border border-babyblue-200 px-2.5 py-1.5 font-medium text-babyblue-700 transition-colors hover:bg-babyblue-100"
+                >
+                  💬 WhatsApp
+                </a>
+                <a
+                  v-if="shareLinksFor(inv.id).email.available"
+                  :href="shareLinksFor(inv.id).email.url || undefined"
+                  class="rounded-lg border border-babyblue-200 px-2.5 py-1.5 font-medium text-babyblue-700 transition-colors hover:bg-babyblue-100"
+                >
+                  ✉️ Email
+                </a>
+                <button
+                  type="button"
+                  class="rounded-lg border border-babyblue-200 px-2.5 py-1.5 font-medium text-babyblue-700 transition-colors hover:bg-babyblue-100"
+                  @click="copyPayLink(inv.id, inv.secureToken)"
+                >
+                  {{ copiedInvoiceId === inv.id ? '✓ Copied!' : '🔗 Copy pay link' }}
                 </button>
               </div>
-            </div>
-
-            <div v-if="shareLoadingId === inv.id" class="mt-2 text-xs text-slate-400">Loading links…</div>
-            <div
-              v-else-if="shareLinksByInvoice[inv.id]"
-              class="mt-3 flex flex-wrap items-center gap-2 border-t border-babyblue-100 pt-3 text-xs"
-            >
-              <a
-                v-if="shareLinksFor(inv.id).whatsapp.available"
-                :href="shareLinksFor(inv.id).whatsapp.url || undefined"
-                target="_blank"
-                rel="noopener"
-                class="rounded-lg border border-babyblue-200 px-2.5 py-1.5 font-medium text-babyblue-700 transition-colors hover:bg-babyblue-100"
-              >
-                💬 WhatsApp
-              </a>
-              <a
-                v-if="shareLinksFor(inv.id).email.available"
-                :href="shareLinksFor(inv.id).email.url || undefined"
-                class="rounded-lg border border-babyblue-200 px-2.5 py-1.5 font-medium text-babyblue-700 transition-colors hover:bg-babyblue-100"
-              >
-                ✉️ Email
-              </a>
-              <button
-                type="button"
-                class="rounded-lg border border-babyblue-200 px-2.5 py-1.5 font-medium text-babyblue-700 transition-colors hover:bg-babyblue-100"
-                @click="copyPayLink(inv.id, inv.secureToken)"
-              >
-                {{ copiedInvoiceId === inv.id ? '✓ Copied!' : '🔗 Copy pay link' }}
-              </button>
-            </div>
-          </li>
-        </ul>
+            </li>
+          </ul>
+          <PaginationControls
+            v-if="invTotal > 0"
+            :page="invPage"
+            :total-pages="invTotalPages"
+            :total="invTotal"
+            class="mt-3"
+            @update:page="goToInvPage"
+          />
+        </template>
       </section>
 
       <!-- TRANSACTIONS -->
@@ -989,11 +1173,50 @@ const outlineButtonClass =
           <p v-if="manualError" class="w-full text-sm text-red-600">{{ manualError }}</p>
         </form>
 
+        <!-- Filter bar -->
+        <div class="mb-3 flex flex-wrap items-end gap-2 rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm">
+          <div class="min-w-48 flex-1">
+            <label class="mb-1 block text-xs font-medium text-slate-700">Search</label>
+            <input v-model="txSearch" placeholder="Reference, note, or contributor name" :class="inputClass" />
+          </div>
+          <div>
+            <label class="mb-1 block text-xs font-medium text-slate-700">Status</label>
+            <select v-model="txStatusFilter" :class="inputClass" class="w-auto">
+              <option value="">All</option>
+              <option value="PENDING">Pending</option>
+              <option value="SUCCESS">Success</option>
+              <option value="FAILED">Failed</option>
+              <option value="REFUNDED">Refunded</option>
+            </select>
+          </div>
+          <div>
+            <label class="mb-1 block text-xs font-medium text-slate-700">Rail</label>
+            <select v-model="txRailFilter" :class="inputClass" class="w-auto">
+              <option value="">All</option>
+              <option value="MOBILE_MONEY">Mobile Money</option>
+              <option value="CARD">Card</option>
+              <option value="MANUAL">Manual</option>
+            </select>
+          </div>
+          <div>
+            <label class="mb-1 block text-xs font-medium text-slate-700">From</label>
+            <input v-model="txDateFrom" type="date" :class="inputClass" class="w-auto" />
+          </div>
+          <div>
+            <label class="mb-1 block text-xs font-medium text-slate-700">To</label>
+            <input v-model="txDateTo" type="date" :class="inputClass" class="w-auto" />
+          </div>
+        </div>
+        <p v-if="txListError" class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{{ txListError }}</p>
+
+        <div v-if="txListLoading" class="rounded-2xl border border-babyblue-100 bg-white/60 p-8 text-center text-sm text-slate-500">
+          Loading…
+        </div>
         <div
-          v-if="store.transactions.length === 0"
+          v-else-if="transactions.length === 0"
           class="rounded-2xl border border-dashed border-babyblue-200 bg-white/60 p-8 text-center text-sm text-slate-500"
         >
-          No transactions yet.
+          {{ txHasActiveFilter ? 'No transactions match your filters.' : 'No transactions yet.' }}
         </div>
         <div v-else class="overflow-hidden rounded-2xl border border-babyblue-100 bg-white shadow-sm">
           <table class="w-full text-left text-sm">
@@ -1008,7 +1231,7 @@ const outlineButtonClass =
               </tr>
             </thead>
             <tbody class="divide-y divide-babyblue-50">
-              <tr v-for="t in store.transactions" :key="t.id">
+              <tr v-for="t in transactions" :key="t.id">
                 <td class="px-4 py-3 font-mono text-xs">
                   <span v-if="t.paymentRail === 'MANUAL'">{{ t.note || 'Manual entry' }}</span>
                   <span v-else>{{ t.providerReference }}</span>
@@ -1055,6 +1278,13 @@ const outlineButtonClass =
               </tr>
             </tbody>
           </table>
+          <PaginationControls
+            v-if="txTotal > 0"
+            :page="txPage"
+            :total-pages="txTotalPages"
+            :total="txTotal"
+            @update:page="goToTxPage"
+          />
         </div>
       </section>
 

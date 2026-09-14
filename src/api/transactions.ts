@@ -1,8 +1,21 @@
 import { apiClient } from './client'
-import type { Transaction } from '@/types/api'
+import type { PaginatedResult, PaymentRail, Transaction, TransactionStatus } from '@/types/api'
 
-export function listForEvent(eventId: string) {
-  return apiClient.get<Transaction[]>('/transactions', { params: { eventId } }).then((r) => r.data)
+export interface ListTransactionsParams {
+  eventId: string
+  page?: number
+  pageSize?: number
+  search?: string
+  status?: TransactionStatus
+  paymentRail?: PaymentRail
+  dateFrom?: string
+  dateTo?: string
+}
+
+export function listForEvent(params: ListTransactionsParams) {
+  return apiClient
+    .get<PaginatedResult<Transaction>>('/transactions', { params })
+    .then((r) => r.data)
 }
 
 export function recordManual(payload: { eventId: string; amount: number; note?: string }) {
