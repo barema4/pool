@@ -8,3 +8,7 @@ export function listForEvent(eventId: string) {
 export function recordManual(payload: { eventId: string; amount: number; note?: string }) {
   return apiClient.post<Transaction>('/transactions/manual', payload).then((r) => r.data)
 }
+
+export function refund(transactionId: string) {
+  return apiClient.post(`/transactions/${transactionId}/refund`).then((r) => r.data)
+}

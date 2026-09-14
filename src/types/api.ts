@@ -12,7 +12,7 @@ export type PaymentRail = 'MOBILE_MONEY' | 'CARD' | 'MANUAL'
 // passed through so Paystack's hosted checkout skips straight to that
 // channel instead of showing its own picker.
 export type PaymentMethod = 'card' | 'mobile_money'
-export type TransactionStatus = 'PENDING' | 'SUCCESS' | 'FAILED'
+export type TransactionStatus = 'PENDING' | 'SUCCESS' | 'FAILED' | 'REFUNDED'
 export type PersonalInvoiceStatus = 'PENDING' | 'PAID' | 'EXPIRED' | 'CANCELLED'
 
 // Determines which payment provider/currency an organization's events use.

@@ -441,6 +441,39 @@ async function handleRecordManual() {
   }
 }
 
+// --- Refunds ---
+const refundingTransactionId = ref<string | null>(null)
+const refundError = ref('')
+const refundErrorTransactionId = ref<string | null>(null)
+const transactionPendingRefund = ref<{ id: string; amountSettled: string } | null>(null)
+const refundConfirmMessage = computed(() =>
+  transactionPendingRefund.value
+    ? `Refund ${money(transactionPendingRefund.value.amountSettled)}? This sends the money back to the payer and cannot be undone.`
+    : '',
+)
+
+function handleRefund(t: { id: string; amountSettled: string }) {
+  transactionPendingRefund.value = t
+}
+
+async function confirmRefund() {
+  const t = transactionPendingRefund.value
+  if (!t) return
+  transactionPendingRefund.value = null
+  refundError.value = ''
+  refundErrorTransactionId.value = null
+  refundingTransactionId.value = t.id
+  try {
+    await transactionsApi.refund(t.id)
+    await store.refreshTransactions()
+  } catch (err) {
+    refundError.value = extractErrorMessage(err)
+    refundErrorTransactionId.value = t.id
+  } finally {
+    refundingTransactionId.value = null
+  }
+}
+
 // --- Contributors ---
 const contributorSummary = ref<ContributorSummary | null>(null)
 const contributorsError = ref('')
@@ -971,6 +1004,7 @@ const outlineButtonClass =
                 <th class="px-4 py-3">Amount</th>
                 <th class="px-4 py-3">Status</th>
                 <th class="px-4 py-3">Date</th>
+                <th class="px-4 py-3"></th>
               </tr>
             </thead>
             <tbody class="divide-y divide-babyblue-50">
@@ -992,8 +1026,20 @@ const outlineButtonClass =
                   <span class="rounded-full px-2.5 py-1 text-xs font-medium" :class="statusBadgeClass(t.status)">{{
                     t.status
                   }}</span>
+                  <p v-if="refundErrorTransactionId === t.id" class="mt-1 text-xs text-red-600">{{ refundError }}</p>
                 </td>
                 <td class="px-4 py-3 text-xs text-slate-500">{{ formatDate(t.timestamp) }}</td>
+                <td class="px-4 py-3 text-right">
+                  <button
+                    v-if="t.status === 'SUCCESS' && t.paymentRail !== 'MANUAL'"
+                    type="button"
+                    :disabled="refundingTransactionId === t.id"
+                    class="rounded-lg border border-red-200 px-2.5 py-1.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    @click="handleRefund(t)"
+                  >
+                    {{ refundingTransactionId === t.id ? 'Refunding…' : 'Refund' }}
+                  </button>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -1067,6 +1113,16 @@ const outlineButtonClass =
       danger
       @confirm="confirmDeleteCategory"
       @cancel="categoryPendingDelete = null"
+    />
+
+    <ConfirmDialog
+      :open="!!transactionPendingRefund"
+      title="Refund this payment?"
+      :message="refundConfirmMessage"
+      confirm-label="Refund"
+      danger
+      @confirm="confirmRefund"
+      @cancel="transactionPendingRefund = null"
     />
   </DashboardLayout>
 </template>
