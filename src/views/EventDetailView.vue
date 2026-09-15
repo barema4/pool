@@ -186,7 +186,7 @@ async function applyWeddingTemplate() {
 // --- Budget categories (paginated) ---
 const categories = ref<BudgetCategory[]>([])
 const catPage = ref(1)
-const CAT_PAGE_SIZE = 25
+const CAT_PAGE_SIZE = 10
 const catTotal = ref(0)
 const catTotalPages = ref(1)
 const catListLoading = ref(false)
@@ -396,7 +396,7 @@ function shareLinksFor(invoiceId: string): ShareLinks {
 // link above is always excluded server-side so it never shows twice.
 const invoices = ref<Invoice[]>([])
 const invPage = ref(1)
-const INV_PAGE_SIZE = 25
+const INV_PAGE_SIZE = 10
 const invTotal = ref(0)
 const invTotalPages = ref(1)
 const invSearch = ref('')
@@ -514,7 +514,7 @@ async function copyPayLink(invoiceId: string, secureToken: string) {
 // --- Transactions (paginated, searchable, filterable) ---
 const transactions = ref<Transaction[]>([])
 const txPage = ref(1)
-const TX_PAGE_SIZE = 25
+const TX_PAGE_SIZE = 10
 const txTotal = ref(0)
 const txTotalPages = ref(1)
 const txSearch = ref('')
