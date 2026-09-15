@@ -8,6 +8,7 @@ import type {
   MobileMoneyProvider,
   InviteMemberResult,
   AuditLogEntry,
+  PaginatedResult,
 } from '@/types/api'
 
 export function listMine() {
@@ -42,9 +43,12 @@ export function inviteMember(organizationId: string, payload: { email: string; r
     .then((r) => r.data)
 }
 
-export function getAuditLog(organizationId: string) {
+export function getAuditLog(
+  organizationId: string,
+  params?: { page?: number; pageSize?: number },
+) {
   return apiClient
-    .get<AuditLogEntry[]>(`/organizations/${organizationId}/audit-log`)
+    .get<PaginatedResult<AuditLogEntry>>(`/organizations/${organizationId}/audit-log`, { params })
     .then((r) => r.data)
 }
 
