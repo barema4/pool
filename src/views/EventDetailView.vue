@@ -15,6 +15,7 @@ import type {
   EventStatus,
   ShareLinks,
   ContributorSummary,
+  BudgetCategory,
   Invoice,
   InvoiceStatus,
   InvoiceSource,
@@ -46,8 +47,9 @@ function money(value: string | number | null | undefined): string {
   return formatMoney(value, currency.value)
 }
 
-// Computed server-side (sum of SUCCESS transactions) — the transactions
-// list below is paginated, so it can no longer be summed client-side.
+// Computed server-side (sum of SUCCESS transactions / of allocatedFunds
+// across every category) — the transactions and budget-category lists
+// below are both paginated, so neither can be summed client-side.
 const totalReceived = computed(() => Number(store.event?.totalReceived ?? 0))
 const goalProgressPct = computed(() => {
   if (!store.event?.targetGoal) return null
@@ -57,9 +59,7 @@ const goalProgressPct = computed(() => {
 })
 
 // --- Budget pool (received / allocated / remaining) ---
-const totalAllocated = computed(() =>
-  store.budgetCategories.reduce((sum, c) => sum + Number(c.allocatedFunds), 0),
-)
+const totalAllocated = computed(() => Number(store.event?.totalAllocated ?? 0))
 const remainingToAllocate = computed(() => totalReceived.value - totalAllocated.value)
 const allocatedProgressPct = computed(() => {
   if (totalReceived.value <= 0) return 0
@@ -174,7 +174,8 @@ async function applyWeddingTemplate() {
         estimatedCost: goal > 0 ? Math.round(goal * item.pct) : undefined,
       })
     }
-    await store.refreshBudgetCategories()
+    catPage.value = 1
+    await loadCategories()
   } catch (err) {
     templateError.value = extractErrorMessage(err)
   } finally {
@@ -182,7 +183,41 @@ async function applyWeddingTemplate() {
   }
 }
 
-// --- Budget categories ---
+// --- Budget categories (paginated) ---
+const categories = ref<BudgetCategory[]>([])
+const catPage = ref(1)
+const CAT_PAGE_SIZE = 25
+const catTotal = ref(0)
+const catTotalPages = ref(1)
+const catListLoading = ref(false)
+const catListError = ref('')
+const catLoadedOnce = ref(false)
+
+async function loadCategories() {
+  catListLoading.value = true
+  catListError.value = ''
+  try {
+    const result = await budgetCategoriesApi.listForEvent({
+      eventId,
+      page: catPage.value,
+      pageSize: CAT_PAGE_SIZE,
+    })
+    categories.value = result.data
+    catTotal.value = result.total
+    catTotalPages.value = result.totalPages
+  } catch (err) {
+    catListError.value = extractErrorMessage(err)
+  } finally {
+    catListLoading.value = false
+  }
+}
+
+function goToCatPage(page: number) {
+  if (page < 1 || page > catTotalPages.value) return
+  catPage.value = page
+  loadCategories()
+}
+
 const newCategoryName = ref('')
 const newCategoryCost = ref<number | null>(null)
 const categoryError = ref('')
@@ -202,7 +237,7 @@ async function handleCreateCategory() {
     })
     newCategoryName.value = ''
     newCategoryCost.value = null
-    await store.refreshBudgetCategories()
+    await loadCategories()
   } catch (err) {
     categoryError.value = extractErrorMessage(err)
   } finally {
@@ -245,7 +280,7 @@ async function handleSaveEdit(categoryId: string) {
       estimatedCost: editCost.value ?? undefined,
     })
     editingCategoryId.value = null
-    await store.refreshBudgetCategories()
+    await loadCategories()
   } catch (err) {
     editError.value = extractErrorMessage(err)
   } finally {
@@ -271,7 +306,9 @@ async function handleAllocate(categoryId: string) {
   try {
     await budgetCategoriesApi.allocate(categoryId, { amount: allocateAmount.value! })
     allocatingCategoryId.value = null
-    await store.refreshBudgetCategories()
+    // Allocating moves money from the event's unallocated pool into this
+    // category — refresh the event too so totalAllocated/remaining stay live.
+    await Promise.all([loadCategories(), store.refreshEvent()])
   } catch (err) {
     allocateError.value = extractErrorMessage(err)
   }
@@ -302,7 +339,9 @@ async function confirmDeleteCategory() {
   deletingCategoryId.value = category.id
   try {
     await budgetCategoriesApi.remove(category.id)
-    await store.refreshBudgetCategories()
+    // Deleting returns any funds it held back to the unallocated pool —
+    // refresh the event too so totalAllocated/remaining stay live.
+    await Promise.all([loadCategories(), store.refreshEvent()])
   } catch (err) {
     deleteError.value = extractErrorMessage(err)
     deleteErrorCategoryId.value = category.id
@@ -536,6 +575,10 @@ watch([txStatusFilter, txRailFilter, txDateFrom, txDateTo], () => {
 function selectTab(tab: Tab) {
   activeTab.value = tab
   if (tab === 'contributors' && !contributorSummary.value) loadContributors()
+  if (tab === 'budget' && !catLoadedOnce.value) {
+    catLoadedOnce.value = true
+    loadCategories()
+  }
   if (tab === 'transactions' && !txLoadedOnce.value) {
     txLoadedOnce.value = true
     loadTransactions()
@@ -798,7 +841,7 @@ const outlineButtonClass =
 
           <!-- Wedding template -->
           <div
-            v-if="store.budgetCategories.length === 0"
+            v-if="catLoadedOnce && !catListLoading && catTotal === 0"
             class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-dashed border-babyblue-200 bg-babyblue-50/60 p-4"
           >
             <p class="text-sm text-slate-600">
@@ -829,16 +872,21 @@ const outlineButtonClass =
             </button>
           </form>
           <p v-if="categoryError" class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{{ categoryError }}</p>
+          <p v-if="catListError" class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{{ catListError }}</p>
 
+          <div v-if="catListLoading" class="rounded-2xl border border-babyblue-100 bg-white/60 p-8 text-center text-sm text-slate-500">
+            Loading…
+          </div>
           <div
-            v-if="store.budgetCategories.length === 0"
+            v-else-if="categories.length === 0"
             class="rounded-2xl border border-dashed border-babyblue-200 bg-white/60 p-8 text-center text-sm text-slate-500"
           >
             No budget categories yet.
           </div>
-          <ul v-else class="space-y-2">
+          <template v-else>
+          <ul class="space-y-2">
             <li
-              v-for="cat in store.budgetCategories"
+              v-for="cat in categories"
               :key="cat.id"
               class="rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm"
             >
@@ -931,6 +979,15 @@ const outlineButtonClass =
               </p>
             </li>
           </ul>
+          <PaginationControls
+            v-if="catTotal > 0"
+            :page="catPage"
+            :total-pages="catTotalPages"
+            :total="catTotal"
+            class="mt-3"
+            @update:page="goToCatPage"
+          />
+          </template>
         </template>
       </section>
 

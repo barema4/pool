@@ -1,9 +1,15 @@
 import { apiClient } from './client'
-import type { BudgetCategory } from '@/types/api'
+import type { BudgetCategory, PaginatedResult } from '@/types/api'
 
-export function listForEvent(eventId: string) {
+export interface ListBudgetCategoriesParams {
+  eventId: string
+  page?: number
+  pageSize?: number
+}
+
+export function listForEvent(params: ListBudgetCategoriesParams) {
   return apiClient
-    .get<BudgetCategory[]>('/budget-categories', { params: { eventId } })
+    .get<PaginatedResult<BudgetCategory>>('/budget-categories', { params })
     .then((r) => r.data)
 }
 

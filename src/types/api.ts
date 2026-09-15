@@ -117,11 +117,11 @@ export interface EventRecord extends PayoutDetails {
 }
 
 export interface EventDetail extends EventRecord {
-  budgetCategories: BudgetCategory[]
   organization: { country: OrganizationCountry } | null
-  // Sum of SUCCESS transactions, computed server-side — the transactions
-  // list itself is paginated, so this can no longer be summed client-side.
+  // Computed server-side, since the transactions and budget category lists
+  // are both paginated and can no longer be summed client-side.
   totalReceived: string
+  totalAllocated: string
 }
 
 export interface PaginatedResult<T> {

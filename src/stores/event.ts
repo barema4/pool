@@ -1,45 +1,33 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import * as eventsApi from '@/api/events'
-import * as budgetCategoriesApi from '@/api/budgetCategories'
-import type { EventDetail, BudgetCategory, EventStatus } from '@/types/api'
+import type { EventDetail, EventStatus } from '@/types/api'
 
 // Single source of truth for "the event currently being managed" — the
-// tabbed EventDetailView's Overview/Budget sections read/refresh this
-// shared context. Transactions and invoices are paginated, filtered, and
-// tab-local (only EventDetailView reads them), so they live as local
+// tabbed EventDetailView's Overview section reads/refreshes this shared
+// context. Budget categories, transactions, and invoices are all paginated
+// and tab-local (only EventDetailView reads them), so they live as local
 // component state there instead of here — see EventDetailView.vue.
 export const useEventStore = defineStore('event', () => {
   const event = ref<EventDetail | null>(null)
-  const budgetCategories = ref<BudgetCategory[]>([])
   const loading = ref(false)
 
   async function load(eventId: string) {
     loading.value = true
     try {
-      const [eventData, categories] = await Promise.all([
-        eventsApi.getOne(eventId),
-        budgetCategoriesApi.listForEvent(eventId),
-      ])
-      event.value = eventData
-      budgetCategories.value = categories
+      event.value = await eventsApi.getOne(eventId)
     } finally {
       loading.value = false
     }
   }
 
-  // Re-fetches the event (including its server-computed totalReceived) —
-  // called after a manual contribution or refund so the header progress
-  // bar and budget-pool numbers stay live without needing the full,
-  // paginated transaction list.
+  // Re-fetches the event (including its server-computed totalReceived/
+  // totalAllocated) — called after a manual contribution, refund, or
+  // budget allocation so the header progress bar and budget-pool numbers
+  // stay live without needing the full, paginated transaction/category list.
   async function refreshEvent() {
     if (!event.value) return
     event.value = await eventsApi.getOne(event.value.id)
-  }
-
-  async function refreshBudgetCategories() {
-    if (!event.value) return
-    budgetCategories.value = await budgetCategoriesApi.listForEvent(event.value.id)
   }
 
   async function updateEvent(payload: Parameters<typeof eventsApi.update>[1]) {
@@ -68,16 +56,13 @@ export const useEventStore = defineStore('event', () => {
 
   function reset() {
     event.value = null
-    budgetCategories.value = []
   }
 
   return {
     event,
-    budgetCategories,
     loading,
     load,
     refreshEvent,
-    refreshBudgetCategories,
     updateEvent,
     updateStatus,
     setPayout,
