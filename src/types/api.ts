@@ -139,6 +139,39 @@ export interface BudgetCategory {
   estimatedCost: string
   allocatedFunds: string
   createdAt: string
+  // Which vendor gets paid for this line item — set via the Budget tab's
+  // vendor picker once the event's budget is FUNDED.
+  vendorId: string | null
+}
+
+export type BudgetApprovalStatus = 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'DECLINED' | 'FUNDED'
+
+export interface BudgetApproval {
+  id: string
+  eventId: string
+  status: BudgetApprovalStatus
+  submittedByUserId: string | null
+  submittedAt: string | null
+  decidedByUserId: string | null
+  decidedAt: string | null
+  declineReason: string | null
+  fundedByUserId: string | null
+  fundedAt: string | null
+}
+
+export type VendorPayoutMethod = 'BANK_ACCOUNT' | 'MOBILE_MONEY'
+
+export interface Vendor {
+  id: string
+  organizationId: string
+  name: string
+  payoutMethod: VendorPayoutMethod
+  payoutBankName: string | null
+  payoutAccountName: string | null
+  payoutAccountLast4: string | null
+  payoutMobileProvider: MobileMoneyProvider | null
+  payoutMobileNumberLast4: string | null
+  createdAt: string
 }
 
 export interface Invoice {

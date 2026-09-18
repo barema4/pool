@@ -6,9 +6,12 @@ import PayoutSettingsCard from '@/components/PayoutSettingsCard.vue'
 import MobileMoneyPayoutCard from '@/components/MobileMoneyPayoutCard.vue'
 import ShareLinkReady from '@/components/ShareLinkReady.vue'
 import PaginationControls from '@/components/PaginationControls.vue'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import * as organizationsApi from '@/api/organizations'
 import * as eventsApi from '@/api/events'
 import * as withdrawalsApi from '@/api/withdrawals'
+import * as vendorsApi from '@/api/vendors'
+import * as payoutsApi from '@/api/payouts'
 import { useOrganizationsStore } from '@/stores/organizations'
 import { extractErrorMessage } from '@/api/client'
 import { statusBadgeClass, formatMoney, formatDate } from '@/lib/format'
@@ -19,20 +22,31 @@ import type {
   OrgRole,
   AuditLogEntry,
   Withdrawal,
+  Vendor,
+  VendorPayoutMethod,
+  Bank,
+  MobileMoneyProvider,
 } from '@/types/api'
 
 const route = useRoute()
 const organizationId = route.params.organizationId as string
 const orgsStore = useOrganizationsStore()
 
-type Tab = 'members' | 'events' | 'settings' | 'audit'
+type Tab = 'members' | 'events' | 'vendors' | 'settings' | 'withdrawals' | 'audit'
 const activeTab = ref<Tab>('members')
-const tabs: { key: Tab; label: string; icon: string }[] = [
+// Withdrawals only applies to Uganda orgs (PawaPay collects into a shared
+// platform balance, so getting money to the organization is this explicit
+// step rather than automatic charge-time routing like Kenya's bank payout).
+const tabs = computed<{ key: Tab; label: string; icon: string }[]>(() => [
   { key: 'members', label: 'Members', icon: '👥' },
   { key: 'events', label: 'Events', icon: '🎉' },
+  { key: 'vendors', label: 'Vendors', icon: '🧾' },
   { key: 'settings', label: 'Settings', icon: '⚙️' },
+  ...(organization.value?.country === 'UGANDA'
+    ? [{ key: 'withdrawals' as const, label: 'Withdrawals', icon: '💸' }]
+    : []),
   { key: 'audit', label: 'Audit Log', icon: '📜' },
-]
+])
 
 const organization = ref<Organization | null>(null)
 const members = ref<OrganizationMember[]>([])
@@ -115,6 +129,126 @@ function selectTab(tab: Tab) {
   if (tab === 'audit' && !auditLoadedOnce.value) {
     auditLoadedOnce.value = true
     loadAuditLog()
+  }
+  if (tab === 'vendors' && !vendorsLoadedOnce.value) {
+    vendorsLoadedOnce.value = true
+    loadVendors()
+  }
+}
+
+// --- Vendors (org-wide directory, lazy-loaded on first tab activation) ---
+const vendors = ref<Vendor[]>([])
+const vendorsLoading = ref(false)
+const vendorsError = ref('')
+const vendorsLoadedOnce = ref(false)
+
+async function loadVendors() {
+  vendorsLoading.value = true
+  vendorsError.value = ''
+  try {
+    vendors.value = await vendorsApi.listForOrganization(organizationId)
+  } catch (err) {
+    vendorsError.value = extractErrorMessage(err)
+  } finally {
+    vendorsLoading.value = false
+  }
+}
+
+const showVendorForm = ref(false)
+const vendorName = ref('')
+const vendorPayoutMethod = ref<VendorPayoutMethod>('BANK_ACCOUNT')
+const vendorBanks = ref<Bank[]>([])
+const vendorBanksLoading = ref(false)
+const vendorBankCode = ref('')
+const vendorAccountNumber = ref('')
+const vendorMobileProvider = ref<MobileMoneyProvider>('MTN_MOMO_UGA')
+const vendorMobileNumber = ref('')
+const vendorError = ref('')
+const creatingVendor = ref(false)
+const deletingVendorId = ref<string | null>(null)
+const vendorPendingDelete = ref<{ id: string; name: string } | null>(null)
+const vendorDeleteConfirmMessage = computed(() =>
+  vendorPendingDelete.value
+    ? `Remove "${vendorPendingDelete.value.name}" from your vendor directory? Any past payments to them are kept for the record.`
+    : '',
+)
+
+async function loadVendorBanks() {
+  if (vendorBanks.value.length > 0) return
+  vendorBanksLoading.value = true
+  try {
+    vendorBanks.value = await payoutsApi.listBanks()
+  } catch (err) {
+    vendorError.value = extractErrorMessage(err)
+  } finally {
+    vendorBanksLoading.value = false
+  }
+}
+
+function toggleVendorForm() {
+  showVendorForm.value = !showVendorForm.value
+  vendorError.value = ''
+  if (showVendorForm.value && vendorPayoutMethod.value === 'BANK_ACCOUNT') loadVendorBanks()
+}
+
+function vendorBankNameFor(code: string) {
+  return vendorBanks.value.find((b) => b.code === code)?.name ?? ''
+}
+
+// Resolves the account with Paystack for immediate feedback before
+// submitting — the backend independently re-verifies before ever
+// persisting anything, exactly like an organization's own payout account
+// (PayoutSettingsCard.vue does the same "verify then save in one click").
+async function handleCreateVendor() {
+  vendorError.value = ''
+  creatingVendor.value = true
+  try {
+    if (vendorPayoutMethod.value === 'BANK_ACCOUNT') {
+      await payoutsApi.resolveAccount({
+        bankCode: vendorBankCode.value,
+        accountNumber: vendorAccountNumber.value,
+      })
+    }
+    await vendorsApi.create({
+      organizationId,
+      name: vendorName.value,
+      payoutMethod: vendorPayoutMethod.value,
+      bankCode: vendorPayoutMethod.value === 'BANK_ACCOUNT' ? vendorBankCode.value : undefined,
+      bankName:
+        vendorPayoutMethod.value === 'BANK_ACCOUNT' ? vendorBankNameFor(vendorBankCode.value) : undefined,
+      accountNumber: vendorPayoutMethod.value === 'BANK_ACCOUNT' ? vendorAccountNumber.value : undefined,
+      mobileProvider: vendorPayoutMethod.value === 'MOBILE_MONEY' ? vendorMobileProvider.value : undefined,
+      mobileNumber: vendorPayoutMethod.value === 'MOBILE_MONEY' ? vendorMobileNumber.value : undefined,
+    })
+    vendorName.value = ''
+    vendorBankCode.value = ''
+    vendorAccountNumber.value = ''
+    vendorMobileNumber.value = ''
+    showVendorForm.value = false
+    await loadVendors()
+  } catch (err) {
+    vendorError.value = extractErrorMessage(err)
+  } finally {
+    creatingVendor.value = false
+  }
+}
+
+function handleDeleteVendor(vendor: { id: string; name: string }) {
+  vendorPendingDelete.value = vendor
+}
+
+async function confirmDeleteVendor() {
+  const vendor = vendorPendingDelete.value
+  if (!vendor) return
+  vendorPendingDelete.value = null
+  deletingVendorId.value = vendor.id
+  try {
+    await vendorsApi.remove(vendor.id)
+    await loadVendors()
+  } catch (err) {
+    vendorsError.value = extractErrorMessage(err)
+  } finally {
+    deletingVendorId.value = null
   }
 }
 
@@ -417,10 +551,133 @@ async function handleCreateEvent() {
         </ul>
       </section>
 
+      <!-- VENDORS -->
+      <section v-else-if="activeTab === 'vendors'">
+        <div class="mb-3 flex items-center justify-between">
+          <h2 class="text-sm font-semibold tracking-wide text-babyblue-700 uppercase">Vendors</h2>
+          <button
+            v-if="canManage"
+            type="button"
+            class="rounded-lg border border-babyblue-200 px-3 py-1 text-xs font-medium text-babyblue-700 transition-colors hover:bg-babyblue-100"
+            @click="toggleVendorForm"
+          >
+            {{ showVendorForm ? 'Cancel' : '+ Add vendor' }}
+          </button>
+        </div>
+
+        <form
+          v-if="showVendorForm"
+          class="mb-3 space-y-2 rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm"
+          @submit.prevent="handleCreateVendor"
+        >
+          <input
+            v-model="vendorName"
+            type="text"
+            required
+            placeholder="Vendor name (e.g. Acme Catering)"
+            class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none"
+          />
+
+          <select
+            v-model="vendorPayoutMethod"
+            class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none"
+            @change="vendorPayoutMethod === 'BANK_ACCOUNT' && loadVendorBanks()"
+          >
+            <option value="BANK_ACCOUNT">Bank account</option>
+            <option value="MOBILE_MONEY">Mobile money</option>
+          </select>
+
+          <template v-if="vendorPayoutMethod === 'BANK_ACCOUNT'">
+            <div v-if="vendorBanksLoading" class="text-xs text-slate-400">Loading banks…</div>
+            <select
+              v-else
+              v-model="vendorBankCode"
+              required
+              class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none"
+            >
+              <option value="" disabled>Select bank…</option>
+              <option v-for="b in vendorBanks" :key="b.code" :value="b.code">{{ b.name }}</option>
+            </select>
+            <input
+              v-model="vendorAccountNumber"
+              required
+              placeholder="Account number"
+              class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none"
+            />
+          </template>
+          <template v-else>
+            <select
+              v-model="vendorMobileProvider"
+              class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none"
+            >
+              <option value="MTN_MOMO_UGA">MTN Mobile Money</option>
+              <option value="AIRTEL_OAPI_UGA">Airtel Money</option>
+            </select>
+            <input
+              v-model="vendorMobileNumber"
+              required
+              placeholder="256771234567"
+              class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none"
+            />
+            <p class="text-xs text-slate-500">Digits only, with country code, no leading + or 0.</p>
+          </template>
+
+          <p v-if="vendorError" class="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{{ vendorError }}</p>
+          <button
+            type="submit"
+            :disabled="creatingVendor"
+            class="rounded-lg bg-babyblue-600 px-3 py-1.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-babyblue-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {{ creatingVendor ? 'Verifying and saving…' : 'Save vendor' }}
+          </button>
+        </form>
+
+        <div v-if="vendorsLoading" class="rounded-2xl border border-babyblue-100 bg-white/60 p-8 text-center text-sm text-slate-500">
+          Loading…
+        </div>
+        <p v-else-if="vendorsError" class="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{{ vendorsError }}</p>
+        <div
+          v-else-if="vendors.length === 0"
+          class="rounded-2xl border border-dashed border-babyblue-200 bg-white/60 p-8 text-center text-sm text-slate-500"
+        >
+          No vendors yet.
+        </div>
+        <ul v-else class="space-y-1.5">
+          <li
+            v-for="v in vendors"
+            :key="v.id"
+            class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-babyblue-100 bg-white px-4 py-2.5 text-sm shadow-sm"
+          >
+            <div class="min-w-0">
+              <p class="truncate font-medium text-slate-900">{{ v.name }}</p>
+              <p class="text-xs text-slate-500">
+                <template v-if="v.payoutMethod === 'BANK_ACCOUNT'"
+                  >{{ v.payoutBankName }} · {{ v.payoutAccountName }} · •••{{ v.payoutAccountLast4 }}</template
+                >
+                <template v-else
+                  >{{ v.payoutMobileProvider === 'MTN_MOMO_UGA' ? 'MTN Mobile Money' : 'Airtel Money' }} · •••{{
+                    v.payoutMobileNumberLast4
+                  }}</template
+                >
+              </p>
+            </div>
+            <button
+              v-if="canManage"
+              type="button"
+              :disabled="deletingVendorId === v.id"
+              class="shrink-0 rounded-lg border border-red-200 px-2.5 py-1.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+              @click="handleDeleteVendor(v)"
+            >
+              {{ deletingVendorId === v.id ? 'Deleting…' : 'Delete' }}
+            </button>
+          </li>
+        </ul>
+      </section>
+
       <!-- SETTINGS -->
       <section v-else-if="activeTab === 'settings'">
         <!-- Payout -->
-        <div v-if="canManage" class="mb-8">
+        <div v-if="canManage">
           <h2 class="mb-3 text-sm font-semibold tracking-wide text-babyblue-700 uppercase">Payout</h2>
           <PayoutSettingsCard
             v-if="organization.country === 'KENYA'"
@@ -436,74 +693,75 @@ async function handleCreateEvent() {
           />
           <p v-if="payoutError" class="mt-2 text-sm text-red-600">{{ payoutError }}</p>
         </div>
+      </section>
 
-        <!-- Withdrawals (Uganda only — PawaPay collects into a shared platform
-             balance, so getting money to the organization is this explicit
-             step rather than automatic charge-time routing) -->
-        <section v-if="organization.country === 'UGANDA' && canManage">
-          <h2 class="mb-3 text-sm font-semibold tracking-wide text-babyblue-700 uppercase">Withdrawals</h2>
-          <div class="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm">
-            <div>
-              <p class="text-xs text-slate-500">Available to withdraw</p>
-              <p class="text-lg font-semibold text-babyblue-700">{{ formatMoney(withdrawalBalance, 'UGX') }}</p>
-            </div>
-            <button
-              type="button"
-              :disabled="withdrawalBalance <= 0 && !showWithdrawForm"
-              class="shrink-0 rounded-lg bg-babyblue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-babyblue-700 disabled:cursor-not-allowed disabled:opacity-50"
-              @click="showWithdrawForm = !showWithdrawForm"
-            >
-              {{ showWithdrawForm ? 'Cancel' : 'Withdraw' }}
-            </button>
+      <!-- WITHDRAWALS (Uganda only — PawaPay collects into a shared platform
+           balance, so getting money to the organization is this explicit
+           step rather than automatic charge-time routing) -->
+      <section v-else-if="activeTab === 'withdrawals'">
+        <h2 class="mb-3 text-sm font-semibold tracking-wide text-babyblue-700 uppercase">Withdrawals</h2>
+        <div class="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm">
+          <div>
+            <p class="text-xs text-slate-500">Available to withdraw</p>
+            <p class="text-lg font-semibold text-babyblue-700">{{ formatMoney(withdrawalBalance, 'UGX') }}</p>
           </div>
-
-          <form
-            v-if="showWithdrawForm"
-            class="mb-3 flex flex-wrap items-end gap-2 rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm"
-            @submit.prevent="handleWithdraw"
+          <button
+            v-if="canManage"
+            type="button"
+            :disabled="withdrawalBalance <= 0 && !showWithdrawForm"
+            class="shrink-0 rounded-lg bg-babyblue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-babyblue-700 disabled:cursor-not-allowed disabled:opacity-50"
+            @click="showWithdrawForm = !showWithdrawForm"
           >
-            <div>
-              <label class="mb-1 block text-xs font-medium text-slate-700">Amount</label>
-              <input
-                v-model.number="withdrawAmount"
-                type="number"
-                step="0.01"
-                min="0.01"
-                :max="withdrawalBalance"
-                required
-                class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none"
-              />
-            </div>
-            <button
-              type="submit"
-              :disabled="withdrawing"
-              class="rounded-lg bg-babyblue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-babyblue-700 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {{ withdrawing ? 'Requesting…' : 'Confirm withdrawal' }}
-            </button>
-          </form>
-          <p v-if="withdrawError" class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{{ withdrawError }}</p>
+            {{ showWithdrawForm ? 'Cancel' : 'Withdraw' }}
+          </button>
+        </div>
 
-          <div
-            v-if="withdrawals.length === 0"
-            class="rounded-2xl border border-dashed border-babyblue-200 bg-white/60 p-6 text-center text-sm text-slate-500"
-          >
-            No withdrawals yet.
+        <form
+          v-if="showWithdrawForm"
+          class="mb-3 flex flex-wrap items-end gap-2 rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm"
+          @submit.prevent="handleWithdraw"
+        >
+          <div>
+            <label class="mb-1 block text-xs font-medium text-slate-700">Amount</label>
+            <input
+              v-model.number="withdrawAmount"
+              type="number"
+              step="0.01"
+              min="0.01"
+              :max="withdrawalBalance"
+              required
+              class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none"
+            />
           </div>
-          <ul v-else class="space-y-1.5">
-            <li
-              v-for="w in withdrawals"
-              :key="w.id"
-              class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-babyblue-100 bg-white px-4 py-2.5 text-sm shadow-sm"
-            >
-              <span class="text-slate-900">{{ formatMoney(w.amount) }}</span>
-              <span class="flex items-center gap-2">
-                <span class="rounded-full px-2.5 py-1 text-xs font-medium" :class="statusBadgeClass(w.status)">{{ w.status }}</span>
-                <span class="text-xs text-slate-400">{{ formatDate(w.createdAt) }}</span>
-              </span>
-            </li>
-          </ul>
-        </section>
+          <button
+            type="submit"
+            :disabled="withdrawing"
+            class="rounded-lg bg-babyblue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-babyblue-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {{ withdrawing ? 'Requesting…' : 'Confirm withdrawal' }}
+          </button>
+        </form>
+        <p v-if="withdrawError" class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{{ withdrawError }}</p>
+
+        <div
+          v-if="withdrawals.length === 0"
+          class="rounded-2xl border border-dashed border-babyblue-200 bg-white/60 p-6 text-center text-sm text-slate-500"
+        >
+          No withdrawals yet.
+        </div>
+        <ul v-else class="space-y-1.5">
+          <li
+            v-for="w in withdrawals"
+            :key="w.id"
+            class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-babyblue-100 bg-white px-4 py-2.5 text-sm shadow-sm"
+          >
+            <span class="text-slate-900">{{ formatMoney(w.amount) }}</span>
+            <span class="flex items-center gap-2">
+              <span class="rounded-full px-2.5 py-1 text-xs font-medium" :class="statusBadgeClass(w.status)">{{ w.status }}</span>
+              <span class="text-xs text-slate-400">{{ formatDate(w.createdAt) }}</span>
+            </span>
+          </li>
+        </ul>
       </section>
 
       <!-- AUDIT LOG -->
@@ -546,5 +804,15 @@ async function handleCreateEvent() {
         </template>
       </section>
     </template>
+
+    <ConfirmDialog
+      :open="!!vendorPendingDelete"
+      title="Remove vendor?"
+      :message="vendorDeleteConfirmMessage"
+      confirm-label="Remove"
+      danger
+      @confirm="confirmDeleteVendor"
+      @cancel="vendorPendingDelete = null"
+    />
   </DashboardLayout>
 </template>
