@@ -57,6 +57,12 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
+      path: '/app/events/:eventId/deposit',
+      name: 'event-deposit',
+      component: () => import('@/views/DepositView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       path: '/app/personal-invoices',
       name: 'personal-invoices',
       component: () => import('@/views/PersonalInvoicesView.vue'),

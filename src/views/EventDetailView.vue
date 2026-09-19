@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, RouterLink } from 'vue-router'
 import DashboardLayout from '@/components/layout/DashboardLayout.vue'
 import PayoutSettingsCard from '@/components/PayoutSettingsCard.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
@@ -919,9 +919,18 @@ const outlineButtonClass =
               {{ store.event.isPermanent ? '🔁 Permanent collection' : '🎉 Milestone event' }}
             </p>
           </div>
-          <span class="rounded-full px-3 py-1 text-xs font-semibold" :class="statusBadgeClass(store.event.status)">
-            {{ store.event.status }}
-          </span>
+          <div class="flex shrink-0 items-center gap-2">
+            <RouterLink
+              v-if="canManageBudget"
+              :to="{ name: 'event-deposit' }"
+              :class="[outlineButtonClass, 'shrink-0']"
+            >
+              💰 Deposit
+            </RouterLink>
+            <span class="rounded-full px-3 py-1 text-xs font-semibold" :class="statusBadgeClass(store.event.status)">
+              {{ store.event.status }}
+            </span>
+          </div>
         </div>
 
         <div v-if="goalProgressPct !== null" class="mt-4">
