@@ -76,11 +76,17 @@ const goalProgressPct = computed(() => {
 })
 
 // --- Budget pool (received / allocated / remaining) ---
+// Uses totalAllocatable, not totalReceived — manual/off-app contributions
+// count toward the goal-progress bar above but were never really deposited,
+// so they must not be assignable to a category that could later be
+// disbursed for real (mirrors the same exclusion the backend enforces in
+// BudgetCategoriesService.allocate()).
+const totalAllocatable = computed(() => Number(store.event?.totalAllocatable ?? 0))
 const totalAllocated = computed(() => Number(store.event?.totalAllocated ?? 0))
-const remainingToAllocate = computed(() => totalReceived.value - totalAllocated.value)
+const remainingToAllocate = computed(() => totalAllocatable.value - totalAllocated.value)
 const allocatedProgressPct = computed(() => {
-  if (totalReceived.value <= 0) return 0
-  return Math.min(100, Math.round((totalAllocated.value / totalReceived.value) * 100))
+  if (totalAllocatable.value <= 0) return 0
+  return Math.min(100, Math.round((totalAllocated.value / totalAllocatable.value) * 100))
 })
 
 // --- Budget approval workflow (lazy-loaded on first Budget tab activation) ---
@@ -1097,12 +1103,16 @@ const outlineButtonClass =
           <!-- Pool summary -->
           <div class="mb-4 rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm">
             <div class="mb-1 flex flex-wrap justify-between gap-2 text-xs text-slate-500">
-              <span>{{ money(totalReceived) }} received</span>
+              <span>{{ money(totalAllocatable) }} available to allocate</span>
               <span>{{ money(totalAllocated) }} allocated</span>
               <span class="font-semibold text-babyblue-700"
                 >{{ money(remainingToAllocate) }} remaining</span
               >
             </div>
+            <p v-if="totalReceived > totalAllocatable" class="mb-2 text-xs text-slate-400">
+              Excludes {{ money(totalReceived - totalAllocatable) }} received as manual/off-app contributions — that
+              money isn't held by the platform, so it can't be assigned to a category that gets paid out for real.
+            </p>
             <div class="h-2 w-full overflow-hidden rounded-full bg-babyblue-100">
               <div
                 class="h-full rounded-full bg-babyblue-500 transition-all"

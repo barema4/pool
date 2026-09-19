@@ -121,6 +121,11 @@ export interface EventDetail extends EventRecord {
   // Computed server-side, since the transactions and budget category lists
   // are both paginated and can no longer be summed client-side.
   totalReceived: string
+  // Real, gateway-settled money only (excludes MANUAL/off-app entries) —
+  // what the Budget tab shows/caps allocation against, since only this can
+  // later be disbursed for real to a vendor. totalReceived above stays
+  // all-inclusive for the goal-progress bar.
+  totalAllocatable: string
   totalAllocated: string
 }
 
