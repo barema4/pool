@@ -195,6 +195,10 @@ export interface Vendor {
   payoutMobileProvider: MobileMoneyProvider | null
   payoutMobileNumberLast4: string | null
   createdAt: string
+  // The vendor's actual owning org — matches whichever organizationId you
+  // asked listForOrganization() for when directly owned, or the managing
+  // agency's when this vendor was inherited via an AgencyClientLink.
+  organization: { id: string; name: string }
 }
 
 export type DisbursementTransferType = 'VENDOR_PAYOUT' | 'ORGANIZER_WITHDRAWAL'

@@ -273,7 +273,15 @@ function goToDisbPage(page: number) {
 
 function vendorNameFor(vendorId: string | null): string {
   if (!vendorId) return '—'
-  return vendors.value.find((v) => v.id === vendorId)?.name ?? '—'
+  const vendor = vendors.value.find((v) => v.id === vendorId)
+  return vendor ? vendorLabel(vendor) : '—'
+}
+
+// Distinguishes a vendor inherited from the managing agency's own roster
+// (see VendorsService.listForOrganization) from one this org created itself.
+function vendorLabel(vendor: Vendor): string {
+  if (vendor.organization.id === store.event?.organizationId) return vendor.name
+  return `${vendor.name} (via ${vendor.organization.name})`
 }
 
 onMounted(async () => {
@@ -1239,7 +1247,7 @@ const outlineButtonClass =
                   @change="handleAssignVendor(cat.id, ($event.target as HTMLSelectElement).value || null)"
                 >
                   <option value="">Unassigned</option>
-                  <option v-for="v in vendors" :key="v.id" :value="v.id">{{ v.name }}</option>
+                  <option v-for="v in vendors" :key="v.id" :value="v.id">{{ vendorLabel(v) }}</option>
                 </select>
               </div>
               <p v-if="assignVendorErrorCategoryId === cat.id" class="mt-2 text-sm text-red-600">{{ assignVendorError }}</p>
