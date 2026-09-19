@@ -12,12 +12,15 @@ import * as eventsApi from '@/api/events'
 import * as withdrawalsApi from '@/api/withdrawals'
 import * as vendorsApi from '@/api/vendors'
 import * as payoutsApi from '@/api/payouts'
+import * as agencyClientsApi from '@/api/agencyClients'
 import { useOrganizationsStore } from '@/stores/organizations'
 import { extractErrorMessage } from '@/api/client'
 import { statusBadgeClass, formatMoney, formatDate } from '@/lib/format'
 import type {
   Organization,
   OrganizationMember,
+  OrganizationType,
+  OrganizationCountry,
   EventRecord,
   OrgRole,
   AuditLogEntry,
@@ -26,21 +29,26 @@ import type {
   VendorPayoutMethod,
   Bank,
   MobileMoneyProvider,
+  ClientOrganization,
+  AgencyClientAccessEntry,
 } from '@/types/api'
 
 const route = useRoute()
 const organizationId = route.params.organizationId as string
 const orgsStore = useOrganizationsStore()
 
-type Tab = 'members' | 'events' | 'vendors' | 'settings' | 'withdrawals' | 'audit'
+type Tab = 'members' | 'events' | 'vendors' | 'clients' | 'settings' | 'withdrawals' | 'audit'
 const activeTab = ref<Tab>('members')
 // Withdrawals only applies to Uganda orgs (PawaPay collects into a shared
 // platform balance, so getting money to the organization is this explicit
 // step rather than automatic charge-time routing like Kenya's bank payout).
+// Clients is shown for every org, not gated by type — any org can act as an
+// agency by linking client orgs to it, see AgencyClientLink.
 const tabs = computed<{ key: Tab; label: string; icon: string }[]>(() => [
   { key: 'members', label: 'Members', icon: '👥' },
   { key: 'events', label: 'Events', icon: '🎉' },
   { key: 'vendors', label: 'Vendors', icon: '🧾' },
+  { key: 'clients', label: 'Clients', icon: '🏢' },
   { key: 'settings', label: 'Settings', icon: '⚙️' },
   ...(organization.value?.country === 'UGANDA'
     ? [{ key: 'withdrawals' as const, label: 'Withdrawals', icon: '💸' }]
@@ -133,6 +141,10 @@ function selectTab(tab: Tab) {
   if (tab === 'vendors' && !vendorsLoadedOnce.value) {
     vendorsLoadedOnce.value = true
     loadVendors()
+  }
+  if (tab === 'clients' && !clientsLoadedOnce.value) {
+    clientsLoadedOnce.value = true
+    loadClients()
   }
 }
 
@@ -365,6 +377,128 @@ async function handleCreateEvent() {
     eventError.value = extractErrorMessage(err)
   } finally {
     creatingEvent.value = false
+  }
+}
+
+// --- Clients (this org acting as an agency, lazy-loaded on first tab
+// activation) — createClient/grantAccess/revokeAccess are MAIN_ORGANIZER-
+// only server-side, matching canInvite's condition; reused here rather than
+// a duplicate computed. ---
+const clientOrgTypes: OrganizationType[] = [
+  'CHURCH',
+  'CHAMA',
+  'SACCO',
+  'COLLECTIVE',
+  'EVENT_COMPANY',
+  'OTHER',
+]
+const clientCountryOptions: { value: OrganizationCountry; label: string }[] = [
+  { value: 'KENYA', label: '🇰🇪 Kenya — card & M-Pesa via Paystack' },
+  { value: 'UGANDA', label: '🇺🇬 Uganda — MTN & Airtel Money via PawaPay' },
+]
+
+const clients = ref<ClientOrganization[]>([])
+const clientsLoading = ref(false)
+const clientsError = ref('')
+const clientsLoadedOnce = ref(false)
+
+async function loadClients() {
+  clientsLoading.value = true
+  clientsError.value = ''
+  try {
+    clients.value = await agencyClientsApi.listClients(organizationId)
+  } catch (err) {
+    clientsError.value = extractErrorMessage(err)
+  } finally {
+    clientsLoading.value = false
+  }
+}
+
+const showClientForm = ref(false)
+const clientName = ref('')
+const clientType = ref<OrganizationType>('OTHER')
+const clientCountry = ref<OrganizationCountry>('KENYA')
+const clientFormError = ref('')
+const creatingClient = ref(false)
+
+async function handleCreateClient() {
+  clientFormError.value = ''
+  creatingClient.value = true
+  try {
+    await agencyClientsApi.createClient(organizationId, {
+      name: clientName.value,
+      type: clientType.value,
+      country: clientCountry.value,
+    })
+    clientName.value = ''
+    showClientForm.value = false
+    await loadClients()
+  } catch (err) {
+    clientFormError.value = extractErrorMessage(err)
+  } finally {
+    creatingClient.value = false
+  }
+}
+
+// Per-client access roster — expand one client at a time to manage which
+// agency staff can access it, and at what role.
+const expandedClientId = ref<string | null>(null)
+const clientAccess = ref<AgencyClientAccessEntry[]>([])
+const clientAccessLoading = ref(false)
+const clientAccessError = ref('')
+
+async function loadClientAccess(clientOrganizationId: string) {
+  clientAccessError.value = ''
+  clientAccessLoading.value = true
+  try {
+    clientAccess.value = await agencyClientsApi.listAccess(organizationId, clientOrganizationId)
+  } catch (err) {
+    clientAccessError.value = extractErrorMessage(err)
+  } finally {
+    clientAccessLoading.value = false
+  }
+}
+
+function toggleClientAccess(clientOrganizationId: string) {
+  if (expandedClientId.value === clientOrganizationId) {
+    expandedClientId.value = null
+    return
+  }
+  expandedClientId.value = clientOrganizationId
+  grantUserId.value = ''
+  loadClientAccess(clientOrganizationId)
+}
+
+const grantUserId = ref('')
+const grantRole = ref<OrgRole>('AUDITOR')
+const grantingAccess = ref(false)
+
+async function handleGrantAccess() {
+  if (!expandedClientId.value) return
+  clientAccessError.value = ''
+  grantingAccess.value = true
+  try {
+    await agencyClientsApi.grantAccess(organizationId, expandedClientId.value, {
+      userId: grantUserId.value,
+      role: grantRole.value,
+    })
+    grantUserId.value = ''
+    await loadClientAccess(expandedClientId.value)
+  } catch (err) {
+    clientAccessError.value = extractErrorMessage(err)
+  } finally {
+    grantingAccess.value = false
+  }
+}
+
+async function handleRevokeAccess(userId: string) {
+  if (!expandedClientId.value) return
+  clientAccessError.value = ''
+  try {
+    await agencyClientsApi.revokeAccess(organizationId, expandedClientId.value, userId)
+    await loadClientAccess(expandedClientId.value)
+  } catch (err) {
+    clientAccessError.value = extractErrorMessage(err)
   }
 }
 </script>
@@ -670,6 +804,156 @@ async function handleCreateEvent() {
             >
               {{ deletingVendorId === v.id ? 'Deleting…' : 'Delete' }}
             </button>
+          </li>
+        </ul>
+      </section>
+
+      <!-- CLIENTS (this org acting as an agency for other orgs it manages) -->
+      <section v-else-if="activeTab === 'clients'">
+        <div class="mb-3 flex items-center justify-between">
+          <h2 class="text-sm font-semibold tracking-wide text-babyblue-700 uppercase">Clients</h2>
+          <button
+            v-if="canInvite"
+            type="button"
+            class="rounded-lg border border-babyblue-200 px-3 py-1 text-xs font-medium text-babyblue-700 transition-colors hover:bg-babyblue-100"
+            @click="showClientForm = !showClientForm"
+          >
+            {{ showClientForm ? 'Cancel' : '+ New client' }}
+          </button>
+        </div>
+        <p class="mb-3 text-xs text-slate-500">
+          Manage other organizations on their behalf. Creating a client here gives you MAIN_ORGANIZER access to it
+          right away — from there, decide which of your own staff can access each client, and at what role.
+        </p>
+
+        <form
+          v-if="showClientForm"
+          class="mb-3 space-y-2 rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm"
+          @submit.prevent="handleCreateClient"
+        >
+          <input
+            v-model="clientName"
+            type="text"
+            required
+            placeholder="Client organization name"
+            class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none"
+          />
+          <select
+            v-model="clientType"
+            class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none"
+          >
+            <option v-for="t in clientOrgTypes" :key="t" :value="t">{{ t }}</option>
+          </select>
+          <select
+            v-model="clientCountry"
+            class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none"
+          >
+            <option v-for="opt in clientCountryOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+          </select>
+          <p v-if="clientFormError" class="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{{ clientFormError }}</p>
+          <button
+            type="submit"
+            :disabled="creatingClient"
+            class="rounded-lg bg-babyblue-600 px-3 py-1.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-babyblue-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {{ creatingClient ? 'Creating…' : 'Create client' }}
+          </button>
+        </form>
+
+        <div v-if="clientsLoading" class="rounded-2xl border border-babyblue-100 bg-white/60 p-8 text-center text-sm text-slate-500">
+          Loading…
+        </div>
+        <p v-else-if="clientsError" class="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{{ clientsError }}</p>
+        <div
+          v-else-if="clients.length === 0"
+          class="rounded-2xl border border-dashed border-babyblue-200 bg-white/60 p-8 text-center text-sm text-slate-500"
+        >
+          No clients yet.
+        </div>
+        <ul v-else class="space-y-1.5">
+          <li v-for="c in clients" :key="c.id" class="rounded-xl border border-babyblue-100 bg-white shadow-sm">
+            <div class="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-sm">
+              <RouterLink
+                :to="{ name: 'organization-detail', params: { organizationId: c.id } }"
+                class="min-w-0 truncate font-medium text-slate-900 hover:text-babyblue-700"
+              >
+                {{ c.name }}
+              </RouterLink>
+              <div class="flex shrink-0 items-center gap-2">
+                <span class="text-xs text-slate-400">{{ c.type }}</span>
+                <button
+                  v-if="canInvite"
+                  type="button"
+                  class="rounded-lg border border-babyblue-200 px-2.5 py-1 text-xs font-medium text-babyblue-700 transition-colors hover:bg-babyblue-100"
+                  @click="toggleClientAccess(c.id)"
+                >
+                  {{ expandedClientId === c.id ? 'Close' : 'Manage access' }}
+                </button>
+              </div>
+            </div>
+
+            <div v-if="expandedClientId === c.id" class="border-t border-babyblue-100 p-4">
+              <div v-if="clientAccessLoading" class="text-sm text-slate-500">Loading…</div>
+              <template v-else>
+                <p v-if="clientAccess.length === 0" class="mb-3 text-xs text-slate-500">
+                  No staff have been granted access to this client yet.
+                </p>
+                <ul v-else class="mb-3 space-y-1.5">
+                  <li
+                    v-for="grant in clientAccess"
+                    :key="grant.id"
+                    class="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-babyblue-50 px-3 py-2 text-sm"
+                  >
+                    <span class="min-w-0 break-words"
+                      >{{ grant.user.name }} <span class="text-slate-400">({{ grant.user.email }})</span></span
+                    >
+                    <span class="flex shrink-0 items-center gap-2">
+                      <span class="rounded-full bg-babyblue-100 px-2.5 py-1 text-xs font-medium text-babyblue-700">{{
+                        grant.role
+                      }}</span>
+                      <button
+                        type="button"
+                        class="text-xs font-medium text-red-600 hover:underline"
+                        @click="handleRevokeAccess(grant.userId)"
+                      >
+                        Revoke
+                      </button>
+                    </span>
+                  </li>
+                </ul>
+
+                <form class="flex flex-wrap items-end gap-2" @submit.prevent="handleGrantAccess">
+                  <div class="min-w-40 flex-1">
+                    <label class="mb-1 block text-xs font-medium text-slate-700">Staff member</label>
+                    <select
+                      v-model="grantUserId"
+                      required
+                      class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none"
+                    >
+                      <option value="" disabled>Select…</option>
+                      <option v-for="m in members" :key="m.userId" :value="m.userId">{{ m.user.name }}</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="mb-1 block text-xs font-medium text-slate-700">Role</label>
+                    <select
+                      v-model="grantRole"
+                      class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none"
+                    >
+                      <option v-for="r in roles" :key="r" :value="r">{{ r }}</option>
+                    </select>
+                  </div>
+                  <button
+                    type="submit"
+                    :disabled="grantingAccess"
+                    class="rounded-lg bg-babyblue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-babyblue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {{ grantingAccess ? 'Granting…' : 'Grant access' }}
+                  </button>
+                </form>
+                <p v-if="clientAccessError" class="mt-2 text-sm text-red-600">{{ clientAccessError }}</p>
+              </template>
+            </div>
           </li>
         </ul>
       </section>

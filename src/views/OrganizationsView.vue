@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { RouterLink } from 'vue-router'
 import DashboardLayout from '@/components/layout/DashboardLayout.vue'
 import ShareLinkReady from '@/components/ShareLinkReady.vue'
@@ -50,14 +50,25 @@ async function handleQuickCreate() {
   }
 }
 
-const orgTypes: OrganizationType[] = ['CHURCH', 'CHAMA', 'SACCO', 'COLLECTIVE', 'OTHER']
+const orgTypes: OrganizationType[] = [
+  'CHURCH',
+  'CHAMA',
+  'SACCO',
+  'COLLECTIVE',
+  'EVENT_COMPANY',
+  'OTHER',
+]
 const orgTypeEmoji: Record<OrganizationType, string> = {
   CHURCH: '⛪',
   CHAMA: '🤝',
   SACCO: '🏦',
   COLLECTIVE: '🎨',
+  EVENT_COMPANY: '🎪',
   OTHER: '📁',
 }
+
+const myOrganizations = computed(() => store.organizations.filter((o) => !o.managedViaAgency))
+const managedForClients = computed(() => store.organizations.filter((o) => o.managedViaAgency))
 
 onMounted(() => store.fetchMine())
 
@@ -201,26 +212,58 @@ async function handleCreate() {
       <p class="mt-2 text-sm font-medium text-slate-700">You're not part of any organization yet.</p>
       <p class="mt-1 text-sm text-slate-500">Create one to start pooling contributions.</p>
     </div>
-    <ul v-else class="grid gap-3 sm:grid-cols-2">
-      <li v-for="org in store.organizations" :key="org.id" class="min-w-0">
-        <RouterLink
-          :to="{ name: 'organization-detail', params: { organizationId: org.id } }"
-          class="flex items-center justify-between rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-babyblue-300 hover:shadow-md"
-        >
-          <div class="flex min-w-0 items-center gap-3">
-            <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-babyblue-50 text-lg">
-              {{ orgTypeEmoji[org.type] }}
-            </span>
-            <div class="min-w-0">
-              <p class="truncate font-medium text-slate-900">{{ org.name }}</p>
-              <p class="truncate text-xs text-slate-500">{{ org.type }}</p>
-            </div>
-          </div>
-          <span class="ml-2 shrink-0 rounded-full bg-babyblue-100 px-2.5 py-1 text-xs font-medium text-babyblue-700">
-            {{ org.role }}
-          </span>
-        </RouterLink>
-      </li>
-    </ul>
+    <template v-else>
+      <div v-if="myOrganizations.length > 0" class="mb-6">
+        <h2 v-if="managedForClients.length > 0" class="mb-2 text-sm font-medium text-slate-500">
+          My organizations
+        </h2>
+        <ul class="grid gap-3 sm:grid-cols-2">
+          <li v-for="org in myOrganizations" :key="org.id" class="min-w-0">
+            <RouterLink
+              :to="{ name: 'organization-detail', params: { organizationId: org.id } }"
+              class="flex items-center justify-between rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-babyblue-300 hover:shadow-md"
+            >
+              <div class="flex min-w-0 items-center gap-3">
+                <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-babyblue-50 text-lg">
+                  {{ orgTypeEmoji[org.type] }}
+                </span>
+                <div class="min-w-0">
+                  <p class="truncate font-medium text-slate-900">{{ org.name }}</p>
+                  <p class="truncate text-xs text-slate-500">{{ org.type }}</p>
+                </div>
+              </div>
+              <span class="ml-2 shrink-0 rounded-full bg-babyblue-100 px-2.5 py-1 text-xs font-medium text-babyblue-700">
+                {{ org.role }}
+              </span>
+            </RouterLink>
+          </li>
+        </ul>
+      </div>
+
+      <div v-if="managedForClients.length > 0">
+        <h2 class="mb-2 text-sm font-medium text-slate-500">Managed for clients</h2>
+        <ul class="grid gap-3 sm:grid-cols-2">
+          <li v-for="org in managedForClients" :key="org.id" class="min-w-0">
+            <RouterLink
+              :to="{ name: 'organization-detail', params: { organizationId: org.id } }"
+              class="flex items-center justify-between rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-babyblue-300 hover:shadow-md"
+            >
+              <div class="flex min-w-0 items-center gap-3">
+                <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-babyblue-50 text-lg">
+                  {{ orgTypeEmoji[org.type] }}
+                </span>
+                <div class="min-w-0">
+                  <p class="truncate font-medium text-slate-900">{{ org.name }}</p>
+                  <p class="truncate text-xs text-slate-500">via {{ org.managedViaAgency?.name }}</p>
+                </div>
+              </div>
+              <span class="ml-2 shrink-0 rounded-full bg-babyblue-100 px-2.5 py-1 text-xs font-medium text-babyblue-700">
+                {{ org.role }}
+              </span>
+            </RouterLink>
+          </li>
+        </ul>
+      </div>
+    </template>
   </DashboardLayout>
 </template>

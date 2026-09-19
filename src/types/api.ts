@@ -3,7 +3,7 @@
 // Prisma as JSON strings, not numbers — always Number(...) them before math.
 
 export type OrgRole = 'MAIN_ORGANIZER' | 'TREASURER' | 'AUDITOR'
-export type OrganizationType = 'CHURCH' | 'CHAMA' | 'SACCO' | 'COLLECTIVE' | 'OTHER'
+export type OrganizationType = 'CHURCH' | 'CHAMA' | 'SACCO' | 'COLLECTIVE' | 'EVENT_COMPANY' | 'OTHER'
 export type EventStatus = 'DRAFT' | 'ACTIVE' | 'CLOSED' | 'ARCHIVED'
 export type InvoiceStatus = 'PENDING' | 'PARTIALLY_PAID' | 'PAID' | 'EXPIRED'
 export type InvoiceSource = 'ORGANIZER' | 'PUBLIC_PLEDGE'
@@ -73,6 +73,24 @@ export interface Organization extends PayoutDetails {
 
 export interface OrganizationWithRole extends Organization {
   role: OrgRole
+  // Present when this org isn't directly owned by the caller, but access
+  // was granted by the named agency via AgencyClientAccess — see
+  // OrganizationsView.vue, which groups these separately.
+  managedViaAgency?: { id: string; name: string }
+}
+
+// A client org managed by an agency — returned by GET
+// /organizations/:agencyOrgId/clients.
+export type ClientOrganization = Organization
+
+// One staff member's granted role for a specific client org — returned by
+// GET /organizations/:agencyOrgId/clients/:clientOrgId/access.
+export interface AgencyClientAccessEntry {
+  id: string
+  userId: string
+  role: OrgRole
+  createdAt: string
+  user: { id: string; name: string; email: string }
 }
 
 export interface OrganizationMember {
