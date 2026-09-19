@@ -174,6 +174,24 @@ export interface Vendor {
   createdAt: string
 }
 
+export type DisbursementTransferType = 'VENDOR_PAYOUT' | 'ORGANIZER_WITHDRAWAL'
+export type DisbursementStatus = 'PENDING' | 'QUEUED' | 'SUCCESS' | 'FAILED'
+
+export interface Disbursement {
+  id: string
+  eventId: string
+  budgetCategoryId: string | null
+  vendorId: string | null
+  transferType: DisbursementTransferType
+  recipientName: string
+  status: DisbursementStatus
+  failureReason: string | null
+  amount: string
+  initiatedBy: string
+  approvedBy: string | null
+  createdAt: string
+}
+
 export interface Invoice {
   id: string
   eventId: string

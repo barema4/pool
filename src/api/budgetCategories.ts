@@ -35,3 +35,17 @@ export function allocate(budgetCategoryId: string, payload: { amount: number }) 
 export function remove(budgetCategoryId: string) {
   return apiClient.delete(`/budget-categories/${budgetCategoryId}`).then((r) => r.data)
 }
+
+// Which vendor gets paid for this line item — null unassigns. Not gated by
+// the budget-approval lock (unlike name/estimatedCost changes above): this
+// is meant to happen once the budget is FUNDED, well past the DRAFT/
+// DECLINED window that update() requires.
+export function assignVendor(budgetCategoryId: string, vendorId: string | null) {
+  return apiClient
+    .patch<BudgetCategory>(`/budget-categories/${budgetCategoryId}/vendor`, { vendorId })
+    .then((r) => r.data)
+}
+
+export function pay(budgetCategoryId: string) {
+  return apiClient.post(`/budget-categories/${budgetCategoryId}/pay`).then((r) => r.data)
+}

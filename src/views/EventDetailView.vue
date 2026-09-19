@@ -6,7 +6,11 @@ import PayoutSettingsCard from '@/components/PayoutSettingsCard.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import PaginationControls from '@/components/PaginationControls.vue'
 import { useEventStore } from '@/stores/event'
+import { useOrganizationsStore } from '@/stores/organizations'
 import * as budgetCategoriesApi from '@/api/budgetCategories'
+import * as budgetApprovalsApi from '@/api/budgetApprovals'
+import * as vendorsApi from '@/api/vendors'
+import * as disbursementsApi from '@/api/disbursements'
 import * as invoicesApi from '@/api/invoices'
 import * as transactionsApi from '@/api/transactions'
 import { extractErrorMessage } from '@/api/client'
@@ -16,6 +20,9 @@ import type {
   ShareLinks,
   ContributorSummary,
   BudgetCategory,
+  BudgetApproval,
+  Vendor,
+  Disbursement,
   Invoice,
   InvoiceStatus,
   InvoiceSource,
@@ -27,6 +34,16 @@ import type {
 const route = useRoute()
 const eventId = route.params.eventId as string
 const store = useEventStore()
+const orgsStore = useOrganizationsStore()
+
+// Only TREASURER can approve/decline/fund (real separation of duties);
+// MAIN_ORGANIZER/TREASURER can submit and manage the budget otherwise —
+// mirrors OrganizationDetailView.vue's myRole/canManage pattern exactly.
+const myRole = computed(
+  () => orgsStore.organizations.find((o) => o.id === store.event?.organizationId)?.role,
+)
+const isTreasurer = computed(() => myRole.value === 'TREASURER')
+const canManageBudget = computed(() => myRole.value === 'MAIN_ORGANIZER' || myRole.value === 'TREASURER')
 
 type Tab = 'overview' | 'budget' | 'invoices' | 'transactions' | 'contributors'
 const activeTab = ref<Tab>('overview')
@@ -66,7 +83,195 @@ const allocatedProgressPct = computed(() => {
   return Math.min(100, Math.round((totalAllocated.value / totalReceived.value) * 100))
 })
 
+// --- Budget approval workflow (lazy-loaded on first Budget tab activation) ---
+const budgetApproval = ref<BudgetApproval | null>(null)
+const budgetApprovalLoading = ref(false)
+const budgetApprovalError = ref('')
+// No row yet means the budget has never been submitted — still effectively
+// DRAFT/editable, matching the backend's own "no row = editable" treatment.
+const budgetIsEditable = computed(() => {
+  const status = budgetApproval.value?.status
+  return !status || status === 'DRAFT' || status === 'DECLINED'
+})
+
+async function loadBudgetApproval() {
+  budgetApprovalLoading.value = true
+  budgetApprovalError.value = ''
+  try {
+    budgetApproval.value = await budgetApprovalsApi.getStatus(eventId)
+  } catch (err) {
+    budgetApprovalError.value = extractErrorMessage(err)
+  } finally {
+    budgetApprovalLoading.value = false
+  }
+}
+
+const submittingBudget = ref(false)
+async function handleSubmitBudget() {
+  budgetApprovalError.value = ''
+  submittingBudget.value = true
+  try {
+    budgetApproval.value = await budgetApprovalsApi.submit(eventId)
+  } catch (err) {
+    budgetApprovalError.value = extractErrorMessage(err)
+  } finally {
+    submittingBudget.value = false
+  }
+}
+
+const decidingBudget = ref(false)
+const showDeclineForm = ref(false)
+const declineReason = ref('')
+
+async function handleApproveBudget() {
+  budgetApprovalError.value = ''
+  decidingBudget.value = true
+  try {
+    budgetApproval.value = await budgetApprovalsApi.decide(eventId, { approve: true })
+  } catch (err) {
+    budgetApprovalError.value = extractErrorMessage(err)
+  } finally {
+    decidingBudget.value = false
+  }
+}
+
+async function handleDeclineBudget() {
+  budgetApprovalError.value = ''
+  decidingBudget.value = true
+  try {
+    budgetApproval.value = await budgetApprovalsApi.decide(eventId, {
+      approve: false,
+      reason: declineReason.value,
+    })
+    showDeclineForm.value = false
+    declineReason.value = ''
+  } catch (err) {
+    budgetApprovalError.value = extractErrorMessage(err)
+  } finally {
+    decidingBudget.value = false
+  }
+}
+
+const fundingBudget = ref(false)
+async function handleFundBudget() {
+  budgetApprovalError.value = ''
+  fundingBudget.value = true
+  try {
+    budgetApproval.value = await budgetApprovalsApi.fund(eventId)
+  } catch (err) {
+    budgetApprovalError.value = extractErrorMessage(err)
+  } finally {
+    fundingBudget.value = false
+  }
+}
+
+// --- Vendors (for the per-category picker, once FUNDED) ---
+const vendors = ref<Vendor[]>([])
+async function loadVendorsForPicker() {
+  if (!store.event?.organizationId) return
+  try {
+    vendors.value = await vendorsApi.listForOrganization(store.event.organizationId)
+  } catch {
+    // Non-critical here — the picker just shows an empty list; the
+    // Vendors tab on the org page is the primary place errors surface.
+  }
+}
+
+const assignVendorError = ref('')
+const assignVendorErrorCategoryId = ref<string | null>(null)
+async function handleAssignVendor(categoryId: string, vendorId: string | null) {
+  assignVendorError.value = ''
+  assignVendorErrorCategoryId.value = null
+  try {
+    await budgetCategoriesApi.assignVendor(categoryId, vendorId)
+    await loadCategories()
+  } catch (err) {
+    assignVendorError.value = extractErrorMessage(err)
+    assignVendorErrorCategoryId.value = categoryId
+  }
+}
+
+// --- Pay a vendor (the full remaining allocated balance for a category) ---
+const payingCategoryId = ref<string | null>(null)
+const payError = ref('')
+const payErrorCategoryId = ref<string | null>(null)
+const categoryPendingPay = ref<{ id: string; name: string; amount: string; vendorName: string } | null>(null)
+const payConfirmMessage = computed(() =>
+  categoryPendingPay.value
+    ? `Pay ${money(categoryPendingPay.value.amount)} to ${categoryPendingPay.value.vendorName} for "${categoryPendingPay.value.name}"? This sends money directly to their account and cannot be undone.`
+    : '',
+)
+
+function handlePayClick(cat: BudgetCategory) {
+  const vendor = vendors.value.find((v) => v.id === cat.vendorId)
+  if (!vendor) return
+  categoryPendingPay.value = {
+    id: cat.id,
+    name: cat.name,
+    amount: cat.allocatedFunds,
+    vendorName: vendor.name,
+  }
+}
+
+async function confirmPay() {
+  const pending = categoryPendingPay.value
+  if (!pending) return
+  categoryPendingPay.value = null
+  payError.value = ''
+  payErrorCategoryId.value = null
+  payingCategoryId.value = pending.id
+  try {
+    await budgetCategoriesApi.pay(pending.id)
+    await Promise.all([loadCategories(), loadDisbursements(), store.refreshEvent()])
+  } catch (err) {
+    payError.value = extractErrorMessage(err)
+    payErrorCategoryId.value = pending.id
+  } finally {
+    payingCategoryId.value = null
+  }
+}
+
+// --- Disbursement history (paginated) ---
+const disbursements = ref<Disbursement[]>([])
+const disbPage = ref(1)
+const DISB_PAGE_SIZE = 10
+const disbTotal = ref(0)
+const disbTotalPages = ref(1)
+const disbListLoading = ref(false)
+const disbListError = ref('')
+
+async function loadDisbursements() {
+  disbListLoading.value = true
+  disbListError.value = ''
+  try {
+    const result = await disbursementsApi.listForEvent({
+      eventId,
+      page: disbPage.value,
+      pageSize: DISB_PAGE_SIZE,
+    })
+    disbursements.value = result.data
+    disbTotal.value = result.total
+    disbTotalPages.value = result.totalPages
+  } catch (err) {
+    disbListError.value = extractErrorMessage(err)
+  } finally {
+    disbListLoading.value = false
+  }
+}
+
+function goToDisbPage(page: number) {
+  if (page < 1 || page > disbTotalPages.value) return
+  disbPage.value = page
+  loadDisbursements()
+}
+
+function vendorNameFor(vendorId: string | null): string {
+  if (!vendorId) return '—'
+  return vendors.value.find((v) => v.id === vendorId)?.name ?? '—'
+}
+
 onMounted(async () => {
+  if (orgsStore.organizations.length === 0) orgsStore.fetchMine()
   try {
     await Promise.all([store.load(eventId), loadPrimaryLink()])
     title.value = store.event?.title ?? ''
@@ -578,6 +783,9 @@ function selectTab(tab: Tab) {
   if (tab === 'budget' && !catLoadedOnce.value) {
     catLoadedOnce.value = true
     loadCategories()
+    loadBudgetApproval()
+    loadVendorsForPicker()
+    loadDisbursements()
   }
   if (tab === 'transactions' && !txLoadedOnce.value) {
     txLoadedOnce.value = true
@@ -822,6 +1030,70 @@ const outlineButtonClass =
         <p v-if="budgetingError" class="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{{ budgetingError }}</p>
 
         <template v-if="store.event.budgetingEnabled">
+          <!-- Budget approval workflow -->
+          <div v-if="budgetApproval" class="mb-4 rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div class="flex items-center gap-2">
+                <span class="rounded-full px-3 py-1 text-xs font-semibold" :class="statusBadgeClass(budgetApproval.status)">
+                  {{ budgetApproval.status }}
+                </span>
+                <p v-if="budgetApproval.status === 'DECLINED' && budgetApproval.declineReason" class="text-xs text-slate-500">
+                  Reason: {{ budgetApproval.declineReason }}
+                </p>
+              </div>
+              <div class="flex flex-wrap gap-2">
+                <button
+                  v-if="canManageBudget && (budgetApproval.status === 'DRAFT' || budgetApproval.status === 'DECLINED')"
+                  type="button"
+                  :disabled="submittingBudget"
+                  :class="primaryButtonClass"
+                  @click="handleSubmitBudget"
+                >
+                  {{ submittingBudget ? 'Submitting…' : 'Submit for approval' }}
+                </button>
+                <template v-if="isTreasurer && budgetApproval.status === 'SUBMITTED'">
+                  <button type="button" :disabled="decidingBudget" :class="primaryButtonClass" @click="handleApproveBudget">
+                    {{ decidingBudget ? 'Approving…' : 'Approve' }}
+                  </button>
+                  <button
+                    type="button"
+                    :disabled="decidingBudget"
+                    class="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    @click="showDeclineForm = !showDeclineForm"
+                  >
+                    Decline
+                  </button>
+                </template>
+                <button
+                  v-if="isTreasurer && budgetApproval.status === 'APPROVED'"
+                  type="button"
+                  :disabled="fundingBudget"
+                  :class="primaryButtonClass"
+                  @click="handleFundBudget"
+                >
+                  {{ fundingBudget ? 'Funding…' : 'Fund budget' }}
+                </button>
+              </div>
+            </div>
+            <form
+              v-if="showDeclineForm"
+              class="mt-3 flex flex-wrap items-end gap-2 border-t border-babyblue-100 pt-3"
+              @submit.prevent="handleDeclineBudget"
+            >
+              <div class="min-w-[16rem] flex-1">
+                <label class="mb-1 block text-xs font-medium text-slate-700">Reason for declining</label>
+                <input v-model="declineReason" required :class="inputClass" />
+              </div>
+              <button type="submit" :disabled="decidingBudget" :class="primaryButtonClass">
+                {{ decidingBudget ? 'Declining…' : 'Confirm decline' }}
+              </button>
+            </form>
+            <p v-if="budgetApprovalError" class="mt-2 text-sm text-red-600">{{ budgetApprovalError }}</p>
+            <p v-if="!budgetIsEditable && budgetApproval.status !== 'FUNDED'" class="mt-2 text-xs text-slate-500">
+              Categories are locked while the budget is {{ budgetApproval.status.toLowerCase() }}.
+            </p>
+          </div>
+
           <!-- Pool summary -->
           <div class="mb-4 rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm">
             <div class="mb-1 flex flex-wrap justify-between gap-2 text-xs text-slate-500">
@@ -858,7 +1130,11 @@ const outlineButtonClass =
           </div>
           <p v-if="templateError" class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{{ templateError }}</p>
 
-          <form class="mb-4 flex flex-wrap items-end gap-2 rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm" @submit.prevent="handleCreateCategory">
+          <form
+            v-if="budgetIsEditable"
+            class="mb-4 flex flex-wrap items-end gap-2 rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm"
+            @submit.prevent="handleCreateCategory"
+          >
             <div>
               <label class="mb-1 block text-xs font-medium text-slate-700">Category name</label>
               <input v-model="newCategoryName" required :class="inputClass" />
@@ -908,22 +1184,47 @@ const outlineButtonClass =
                   </div>
                 </div>
                 <div class="flex shrink-0 gap-2">
-                  <button type="button" :class="outlineButtonClass" @click="openEdit(cat)">
-                    {{ editingCategoryId === cat.id ? 'Cancel' : 'Edit' }}
-                  </button>
-                  <button type="button" :class="outlineButtonClass" @click="openAllocate(cat.id)">
-                    {{ allocatingCategoryId === cat.id ? 'Cancel' : 'Allocate' }}
-                  </button>
+                  <template v-if="budgetIsEditable">
+                    <button type="button" :class="outlineButtonClass" @click="openEdit(cat)">
+                      {{ editingCategoryId === cat.id ? 'Cancel' : 'Edit' }}
+                    </button>
+                    <button type="button" :class="outlineButtonClass" @click="openAllocate(cat.id)">
+                      {{ allocatingCategoryId === cat.id ? 'Cancel' : 'Allocate' }}
+                    </button>
+                    <button
+                      type="button"
+                      :disabled="deletingCategoryId === cat.id"
+                      class="rounded-lg border border-red-200 px-2.5 py-1.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      @click="handleDeleteCategory(cat)"
+                    >
+                      {{ deletingCategoryId === cat.id ? 'Deleting…' : 'Delete' }}
+                    </button>
+                  </template>
                   <button
+                    v-if="budgetApproval?.status === 'FUNDED' && canManageBudget"
                     type="button"
-                    :disabled="deletingCategoryId === cat.id"
-                    class="rounded-lg border border-red-200 px-2.5 py-1.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
-                    @click="handleDeleteCategory(cat)"
+                    :disabled="!cat.vendorId || payingCategoryId === cat.id"
+                    :class="primaryButtonClass"
+                    @click="handlePayClick(cat)"
                   >
-                    {{ deletingCategoryId === cat.id ? 'Deleting…' : 'Delete' }}
+                    {{ payingCategoryId === cat.id ? 'Paying…' : 'Pay' }}
                   </button>
                 </div>
               </div>
+
+              <div v-if="budgetApproval?.status === 'FUNDED' && canManageBudget" class="mt-3 flex flex-wrap items-center gap-2 border-t border-babyblue-100 pt-3">
+                <label class="text-xs font-medium text-slate-700">Vendor</label>
+                <select
+                  :value="cat.vendorId ?? ''"
+                  :class="inputClass"
+                  @change="handleAssignVendor(cat.id, ($event.target as HTMLSelectElement).value || null)"
+                >
+                  <option value="">Unassigned</option>
+                  <option v-for="v in vendors" :key="v.id" :value="v.id">{{ v.name }}</option>
+                </select>
+              </div>
+              <p v-if="assignVendorErrorCategoryId === cat.id" class="mt-2 text-sm text-red-600">{{ assignVendorError }}</p>
+              <p v-if="payErrorCategoryId === cat.id" class="mt-2 text-sm text-red-600">{{ payError }}</p>
 
               <form
                 v-if="editingCategoryId === cat.id"
@@ -988,6 +1289,45 @@ const outlineButtonClass =
             @update:page="goToCatPage"
           />
           </template>
+
+          <!-- Disbursement history -->
+          <div class="mt-6">
+            <p class="mb-2 text-sm font-medium text-slate-900">Vendor payouts</p>
+            <p v-if="disbListError" class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{{ disbListError }}</p>
+            <div v-if="disbListLoading" class="rounded-2xl border border-babyblue-100 bg-white/60 p-8 text-center text-sm text-slate-500">
+              Loading…
+            </div>
+            <div
+              v-else-if="disbursements.length === 0"
+              class="rounded-2xl border border-dashed border-babyblue-200 bg-white/60 p-8 text-center text-sm text-slate-500"
+            >
+              No vendor payouts yet.
+            </div>
+            <ul v-else class="space-y-2">
+              <li
+                v-for="d in disbursements"
+                :key="d.id"
+                class="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm"
+              >
+                <div class="min-w-0 flex-1">
+                  <p class="truncate font-medium text-slate-900">{{ vendorNameFor(d.vendorId) }}</p>
+                  <p class="text-xs text-slate-500">
+                    {{ money(d.amount) }} · {{ formatDate(d.createdAt) }}
+                    <span v-if="d.status === 'FAILED' && d.failureReason"> · {{ d.failureReason }}</span>
+                  </p>
+                </div>
+                <span class="rounded-full px-2.5 py-1 text-xs font-medium" :class="statusBadgeClass(d.status)">{{ d.status }}</span>
+              </li>
+            </ul>
+            <PaginationControls
+              v-if="disbTotal > 0"
+              :page="disbPage"
+              :total-pages="disbTotalPages"
+              :total="disbTotal"
+              class="mt-3"
+              @update:page="goToDisbPage"
+            />
+          </div>
         </template>
       </section>
 
@@ -1422,6 +1762,16 @@ const outlineButtonClass =
       danger
       @confirm="confirmRefund"
       @cancel="transactionPendingRefund = null"
+    />
+
+    <ConfirmDialog
+      :open="!!categoryPendingPay"
+      title="Pay vendor?"
+      :message="payConfirmMessage"
+      confirm-label="Pay"
+      danger
+      @confirm="confirmPay"
+      @cancel="categoryPendingPay = null"
     />
   </DashboardLayout>
 </template>

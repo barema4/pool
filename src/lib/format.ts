@@ -49,6 +49,13 @@ const STATUS_STYLES: Record<string, string> = {
   CANCELLED: 'bg-slate-100 text-slate-600',
   REFUNDED: 'bg-slate-100 text-slate-600',
   PROCESSING: 'bg-amber-100 text-amber-700',
+  // Budget approval workflow
+  SUBMITTED: 'bg-amber-100 text-amber-700',
+  APPROVED: 'bg-green-100 text-green-700',
+  DECLINED: 'bg-red-100 text-red-700',
+  FUNDED: 'bg-green-100 text-green-700',
+  // Disbursements
+  QUEUED: 'bg-amber-100 text-amber-700',
 }
 
 export function statusBadgeClass(status: string): string {
