@@ -201,6 +201,24 @@ export interface Vendor {
   organization: { id: string; name: string }
 }
 
+export interface BudgetTemplateItem {
+  id: string
+  name: string
+  // Exactly one is set — percentage-of-goal (as a 0-1 fraction) or a fixed
+  // amount, mirroring BudgetCategory's own estimatedCost computation.
+  percentage: string | null
+  fixedAmount: string | null
+  sortOrder: number
+}
+
+export interface BudgetTemplate {
+  id: string
+  organizationId: string
+  name: string
+  createdAt: string
+  items: BudgetTemplateItem[]
+}
+
 export type DisbursementTransferType = 'VENDOR_PAYOUT' | 'ORGANIZER_WITHDRAWAL'
 export type DisbursementStatus = 'PENDING' | 'QUEUED' | 'SUCCESS' | 'FAILED'
 
