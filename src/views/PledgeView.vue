@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import * as publicApi from '@/api/public'
 import { extractErrorMessage } from '@/api/client'
@@ -8,6 +8,15 @@ import type { Invoice } from '@/types/api'
 
 const route = useRoute()
 const eventId = route.params.eventId as string
+
+const logoUrl = ref<string | null>(null)
+onMounted(async () => {
+  try {
+    logoUrl.value = (await publicApi.getEventBranding(eventId)).logoUrl
+  } catch {
+    // Non-critical — just falls back to the platform's own badge.
+  }
+})
 
 const contributorName = ref('')
 const contributorPhone = ref('')
@@ -52,7 +61,11 @@ async function handleCopy() {
     <div class="w-full max-w-md rounded-2xl border border-babyblue-100 bg-white p-7 shadow-lg shadow-babyblue-100">
       <template v-if="!created">
         <div class="mb-1 flex items-center gap-2">
-          <span class="flex h-9 w-9 items-center justify-center rounded-lg bg-babyblue-500 text-sm font-bold text-white">
+          <img v-if="logoUrl" :src="logoUrl" alt="" class="h-9 w-9 shrink-0 rounded-lg object-cover" />
+          <span
+            v-else
+            class="flex h-9 w-9 items-center justify-center rounded-lg bg-babyblue-500 text-sm font-bold text-white"
+          >
             OP
           </span>
           <h1 class="text-lg font-semibold text-slate-900">Pledge a contribution</h1>

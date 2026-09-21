@@ -69,6 +69,8 @@ export interface Organization extends PayoutDetails {
   payoutMobileProvider: MobileMoneyProvider | null
   payoutMobileNumberLast4: string | null
   createdAt: string
+  // Shown instead of the platform's own badge on public checkout pages.
+  logoUrl: string | null
 }
 
 export interface OrganizationWithRole extends Organization {
@@ -258,7 +260,7 @@ export interface PublicInvoiceView extends Invoice {
     id: string
     title: string
     isPermanent: boolean
-    organization: { country: OrganizationCountry } | null
+    organization: { country: OrganizationCountry; logoUrl: string | null } | null
   }
   platformFeePercent: number
   // Only set for a fixed-amount invoice (amountRequested !== null) — an
@@ -335,7 +337,7 @@ export interface Receipt {
   payerName: string | null
   categoryTag: string | null
   event: { id: string; title: string }
-  organization: { name: string } | null
+  organization: { name: string; logoUrl: string | null } | null
   invoiceRemainingBalance: number | null
 }
 

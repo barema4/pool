@@ -293,6 +293,30 @@ async function handleSetMobileMoneyPayout(payload: { provider: 'MTN_MOMO_UGA' | 
   }
 }
 
+// Branding (shown instead of the platform's own badge on public checkout pages)
+const logoUrlInput = ref('')
+const savingBranding = ref(false)
+const brandingError = ref('')
+
+function startEditingBranding() {
+  logoUrlInput.value = organization.value?.logoUrl ?? ''
+  brandingError.value = ''
+}
+
+async function handleSaveBranding() {
+  brandingError.value = ''
+  savingBranding.value = true
+  try {
+    organization.value = await organizationsApi.setBranding(organizationId, {
+      logoUrl: logoUrlInput.value || null,
+    })
+  } catch (err) {
+    brandingError.value = extractErrorMessage(err)
+  } finally {
+    savingBranding.value = false
+  }
+}
+
 // Withdrawals (Uganda only)
 const withdrawAmount = ref<number | null>(null)
 const withdrawError = ref('')
@@ -976,6 +1000,48 @@ async function handleRevokeAccess(userId: string) {
             @submit="handleSetMobileMoneyPayout"
           />
           <p v-if="payoutError" class="mt-2 text-sm text-red-600">{{ payoutError }}</p>
+        </div>
+
+        <!-- Branding -->
+        <div v-if="canManage" class="mt-6">
+          <h2 class="mb-3 text-sm font-semibold tracking-wide text-babyblue-700 uppercase">Branding</h2>
+          <div class="rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm">
+            <p class="mb-3 text-xs text-slate-500">
+              Shown instead of the OpenPool badge on your public checkout and pledge pages.
+            </p>
+            <div class="flex items-end gap-3">
+              <div
+                class="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-babyblue-50"
+              >
+                <img
+                  v-if="logoUrlInput || organization.logoUrl"
+                  :src="logoUrlInput || organization.logoUrl!"
+                  alt=""
+                  class="h-full w-full object-cover"
+                />
+                <span v-else class="text-xs font-bold text-babyblue-700">OP</span>
+              </div>
+              <div class="min-w-0 flex-1">
+                <label class="mb-1 block text-xs font-medium text-slate-700">Logo URL</label>
+                <input
+                  v-model="logoUrlInput"
+                  type="url"
+                  placeholder="https://example.com/logo.png"
+                  class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none"
+                  @focus="startEditingBranding"
+                />
+              </div>
+              <button
+                type="button"
+                :disabled="savingBranding"
+                class="shrink-0 rounded-lg bg-babyblue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-babyblue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                @click="handleSaveBranding"
+              >
+                {{ savingBranding ? 'Saving…' : 'Save' }}
+              </button>
+            </div>
+            <p v-if="brandingError" class="mt-2 text-sm text-red-600">{{ brandingError }}</p>
+          </div>
         </div>
       </section>
 

@@ -183,7 +183,16 @@ async function copyPledgeLink() {
 
       <template v-else-if="invoice">
         <div class="mb-1 flex items-center gap-2">
-          <span class="flex h-9 w-9 items-center justify-center rounded-lg bg-babyblue-500 text-sm font-bold text-white">
+          <img
+            v-if="invoice.event.organization?.logoUrl"
+            :src="invoice.event.organization.logoUrl"
+            alt=""
+            class="h-9 w-9 shrink-0 rounded-lg object-cover"
+          />
+          <span
+            v-else
+            class="flex h-9 w-9 items-center justify-center rounded-lg bg-babyblue-500 text-sm font-bold text-white"
+          >
             OP
           </span>
           <h1 class="text-lg font-semibold text-slate-900">{{ invoice.event.title }}</h1>

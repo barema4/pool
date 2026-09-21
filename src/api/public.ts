@@ -52,6 +52,15 @@ export function getPublicContributors(eventId: string) {
     .then((r) => r.data)
 }
 
+// Just enough for PledgeView.vue to show the org's own logo instead of the
+// platform's badge — PledgeView has no invoice yet, so it can't get this
+// from getInvoiceByToken the way PayView.vue does.
+export function getEventBranding(eventId: string) {
+  return publicApiClient
+    .get<{ logoUrl: string | null }>(`/public/events/${eventId}/branding`)
+    .then((r) => r.data)
+}
+
 export function getReceipt(reference: string) {
   return publicApiClient
     .get<Receipt>('/public/receipts', { params: { reference } })

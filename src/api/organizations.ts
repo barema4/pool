@@ -69,3 +69,9 @@ export function setMobileMoneyPayout(
     .patch<Organization>(`/organizations/${organizationId}/payout-mobile-money`, payload)
     .then((r) => r.data)
 }
+
+export function setBranding(organizationId: string, payload: { logoUrl: string | null }) {
+  return apiClient
+    .patch<Organization>(`/organizations/${organizationId}/branding`, payload)
+    .then((r) => r.data)
+}
