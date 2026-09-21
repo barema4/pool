@@ -12,6 +12,7 @@ import * as budgetTemplatesApi from '@/api/budgetTemplates'
 import * as budgetApprovalsApi from '@/api/budgetApprovals'
 import * as vendorsApi from '@/api/vendors'
 import * as disbursementsApi from '@/api/disbursements'
+import * as eventReportsApi from '@/api/eventReports'
 import * as invoicesApi from '@/api/invoices'
 import * as transactionsApi from '@/api/transactions'
 import { extractErrorMessage } from '@/api/client'
@@ -46,6 +47,22 @@ const myRole = computed(
 )
 const isTreasurer = computed(() => myRole.value === 'TREASURER')
 const canManageBudget = computed(() => myRole.value === 'MAIN_ORGANIZER' || myRole.value === 'TREASURER')
+
+const downloadingReport = ref(false)
+const downloadReportError = ref('')
+
+async function handleDownloadReport() {
+  downloadReportError.value = ''
+  downloadingReport.value = true
+  try {
+    const slug = (store.event?.title ?? 'event').toLowerCase().replace(/[^a-z0-9]+/g, '-')
+    await eventReportsApi.downloadCloseoutReport(eventId, `closeout-${slug}.csv`)
+  } catch (err) {
+    downloadReportError.value = extractErrorMessage(err)
+  } finally {
+    downloadingReport.value = false
+  }
+}
 
 type Tab = 'overview' | 'budget' | 'invoices' | 'transactions' | 'contributors'
 const activeTab = ref<Tab>('overview')
@@ -1013,6 +1030,15 @@ const outlineButtonClass =
             </p>
           </div>
           <div class="flex shrink-0 items-center gap-2">
+            <button
+              v-if="canManageBudget"
+              type="button"
+              :disabled="downloadingReport"
+              :class="[outlineButtonClass, 'shrink-0']"
+              @click="handleDownloadReport"
+            >
+              {{ downloadingReport ? 'Preparing…' : '⬇️ Report' }}
+            </button>
             <RouterLink
               v-if="canManageBudget"
               :to="{ name: 'event-deposit' }"
@@ -1025,6 +1051,7 @@ const outlineButtonClass =
             </span>
           </div>
         </div>
+        <p v-if="downloadReportError" class="mt-2 text-sm text-red-600">{{ downloadReportError }}</p>
 
         <div v-if="goalProgressPct !== null" class="mt-4">
           <div class="mb-1 flex justify-between text-xs text-slate-500">
