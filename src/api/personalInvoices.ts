@@ -8,8 +8,10 @@ import type {
   MobileMoneyProvider,
 } from '@/types/api'
 
-export function listMine() {
-  return apiClient.get<PersonalInvoice[]>('/personal-invoices').then((r) => r.data)
+export function listMine(relatedOrganizationId?: string) {
+  return apiClient
+    .get<PersonalInvoice[]>('/personal-invoices', { params: { relatedOrganizationId } })
+    .then((r) => r.data)
 }
 
 export function create(payload: {
@@ -19,6 +21,7 @@ export function create(payload: {
   description?: string
   amount: number
   expiresInDays?: number
+  relatedOrganizationId?: string
 }) {
   return apiClient.post<PersonalInvoice>('/personal-invoices', payload).then((r) => r.data)
 }

@@ -355,6 +355,7 @@ export interface PersonalInvoice {
   expiresAt: string | null
   paidAt: string | null
   createdAt: string
+  relatedOrganizationId: string | null
 }
 
 export interface PublicPersonalInvoiceView extends PersonalInvoice {

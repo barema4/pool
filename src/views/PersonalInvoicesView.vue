@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import DashboardLayout from '@/components/layout/DashboardLayout.vue'
 import PayoutSettingsCard from '@/components/PayoutSettingsCard.vue'
 import MobileMoneyPayoutCard from '@/components/MobileMoneyPayoutCard.vue'
@@ -9,6 +10,8 @@ import { extractErrorMessage } from '@/api/client'
 import { formatMoney, formatDate, statusBadgeClass, copyToClipboard } from '@/lib/format'
 import type { PersonalInvoice, ShareLinks, UserProfile } from '@/types/api'
 
+const route = useRoute()
+
 const invoices = ref<PersonalInvoice[]>([])
 const loading = ref(true)
 const loadError = ref('')
@@ -16,7 +19,17 @@ const loadError = ref('')
 const profile = ref<UserProfile | null>(null)
 const payoutError = ref('')
 
-const showForm = ref(false)
+// Arriving from a client org's "Bill this client" action pre-fills and
+// tags the new invoice with that org — see OrganizationDetailView.vue's
+// Clients tab.
+const relatedOrganizationId = ref<string | null>(
+  typeof route.query.relatedOrganizationId === 'string' ? route.query.relatedOrganizationId : null,
+)
+const relatedOrganizationName = ref<string | null>(
+  typeof route.query.relatedOrganizationName === 'string' ? route.query.relatedOrganizationName : null,
+)
+
+const showForm = ref(!!relatedOrganizationId.value)
 const recipientName = ref('')
 const recipientEmail = ref('')
 const recipientPhone = ref('')
@@ -25,6 +38,16 @@ const amount = ref<number | null>(null)
 const expiresInDays = ref<number | null>(null)
 const createError = ref('')
 const creating = ref(false)
+
+function clearRelatedOrganization() {
+  relatedOrganizationId.value = null
+  relatedOrganizationName.value = null
+}
+
+function toggleForm() {
+  showForm.value = !showForm.value
+  if (!showForm.value) clearRelatedOrganization()
+}
 
 const shareLinksByInvoice = ref<Record<string, ShareLinks>>({})
 const shareLoadingId = ref<string | null>(null)
@@ -86,6 +109,7 @@ async function handleCreate() {
       description: description.value || undefined,
       amount: amount.value!,
       expiresInDays: expiresInDays.value ?? undefined,
+      relatedOrganizationId: relatedOrganizationId.value ?? undefined,
     })
     recipientName.value = ''
     recipientEmail.value = ''
@@ -94,6 +118,7 @@ async function handleCreate() {
     amount.value = null
     expiresInDays.value = null
     showForm.value = false
+    clearRelatedOrganization()
     invoices.value = await personalInvoicesApi.listMine()
   } catch (err) {
     createError.value = extractErrorMessage(err)
@@ -177,7 +202,7 @@ const outlineButtonClass =
         <button
           type="button"
           class="rounded-lg border border-babyblue-200 px-3 py-1 text-xs font-medium text-babyblue-700 transition-colors hover:bg-babyblue-100"
-          @click="showForm = !showForm"
+          @click="toggleForm"
         >
           {{ showForm ? 'Cancel' : '+ New invoice' }}
         </button>
@@ -188,6 +213,15 @@ const outlineButtonClass =
         class="mb-4 space-y-2 rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm"
         @submit.prevent="handleCreate"
       >
+        <div
+          v-if="relatedOrganizationName"
+          class="flex items-center justify-between gap-2 rounded-lg bg-babyblue-50 px-3 py-2 text-xs font-medium text-babyblue-700"
+        >
+          <span>🏢 Billing: {{ relatedOrganizationName }}</span>
+          <button type="button" class="text-babyblue-700 underline" @click="clearRelatedOrganization">
+            Clear
+          </button>
+        </div>
         <input v-model="recipientName" required placeholder="Recipient name" :class="inputClass" />
         <input
           v-model="recipientEmail"
@@ -236,6 +270,9 @@ const outlineButtonClass =
                 {{ inv.description ?? 'No description' }} · {{ formatMoney(inv.amount) }}
               </p>
               <p class="text-xs text-slate-400">Created {{ formatDate(inv.createdAt) }}</p>
+              <p v-if="inv.relatedOrganizationId" class="mt-1 text-xs font-medium text-babyblue-600">
+                🏢 Client billing
+              </p>
             </div>
             <div class="flex shrink-0 items-center gap-2">
               <span class="rounded-full px-2.5 py-1 text-xs font-medium" :class="statusBadgeClass(inv.status)">{{

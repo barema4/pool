@@ -13,6 +13,7 @@ import * as withdrawalsApi from '@/api/withdrawals'
 import * as vendorsApi from '@/api/vendors'
 import * as payoutsApi from '@/api/payouts'
 import * as agencyClientsApi from '@/api/agencyClients'
+import * as personalInvoicesApi from '@/api/personalInvoices'
 import { useOrganizationsStore } from '@/stores/organizations'
 import { extractErrorMessage } from '@/api/client'
 import { statusBadgeClass, formatMoney, formatDate } from '@/lib/format'
@@ -31,6 +32,7 @@ import type {
   MobileMoneyProvider,
   ClientOrganization,
   AgencyClientAccessEntry,
+  PersonalInvoice,
 } from '@/types/api'
 
 const route = useRoute()
@@ -491,6 +493,7 @@ function toggleClientAccess(clientOrganizationId: string) {
   expandedClientId.value = clientOrganizationId
   grantUserId.value = ''
   loadClientAccess(clientOrganizationId)
+  loadClientInvoices(clientOrganizationId)
 }
 
 const grantUserId = ref('')
@@ -523,6 +526,33 @@ async function handleRevokeAccess(userId: string) {
     await loadClientAccess(expandedClientId.value)
   } catch (err) {
     clientAccessError.value = extractErrorMessage(err)
+  }
+}
+
+// Planning invoices billed to this client — only the ones the current user
+// personally issued (PersonalInvoice has no org scoping of its own), tagged
+// via relatedOrganizationId. See PersonalInvoicesView.vue's "Bill this
+// client" entry point below.
+const clientInvoices = ref<PersonalInvoice[]>([])
+const clientInvoicesLoading = ref(false)
+const clientInvoicesError = ref('')
+
+async function loadClientInvoices(clientOrganizationId: string) {
+  clientInvoicesError.value = ''
+  clientInvoicesLoading.value = true
+  try {
+    clientInvoices.value = await personalInvoicesApi.listMine(clientOrganizationId)
+  } catch (err) {
+    clientInvoicesError.value = extractErrorMessage(err)
+  } finally {
+    clientInvoicesLoading.value = false
+  }
+}
+
+function billClientRoute(client: ClientOrganization) {
+  return {
+    name: 'personal-invoices',
+    query: { relatedOrganizationId: client.id, relatedOrganizationName: client.name },
   }
 }
 </script>
@@ -976,6 +1006,41 @@ async function handleRevokeAccess(userId: string) {
                   </button>
                 </form>
                 <p v-if="clientAccessError" class="mt-2 text-sm text-red-600">{{ clientAccessError }}</p>
+
+                <div class="mt-4 border-t border-babyblue-100 pt-3">
+                  <div class="mb-2 flex items-center justify-between">
+                    <h3 class="text-xs font-semibold tracking-wide text-babyblue-700 uppercase">
+                      Planning invoices
+                    </h3>
+                    <RouterLink
+                      :to="billClientRoute(c)"
+                      class="rounded-lg border border-babyblue-200 px-2.5 py-1 text-xs font-medium text-babyblue-700 transition-colors hover:bg-babyblue-100"
+                    >
+                      + Bill this client
+                    </RouterLink>
+                  </div>
+                  <p class="mb-2 text-xs text-slate-500">Only invoices you personally issued for this client.</p>
+                  <div v-if="clientInvoicesLoading" class="text-xs text-slate-400">Loading…</div>
+                  <p v-else-if="clientInvoicesError" class="text-xs text-red-600">{{ clientInvoicesError }}</p>
+                  <p v-else-if="clientInvoices.length === 0" class="text-xs text-slate-400">
+                    No invoices billed to this client yet.
+                  </p>
+                  <ul v-else class="space-y-1.5">
+                    <li
+                      v-for="inv in clientInvoices"
+                      :key="inv.id"
+                      class="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-babyblue-50 px-3 py-2 text-xs"
+                    >
+                      <span class="min-w-0 truncate font-medium text-slate-800">{{ inv.recipientName }}</span>
+                      <span class="flex shrink-0 items-center gap-2">
+                        <span>{{ formatMoney(inv.amount) }}</span>
+                        <span class="rounded-full px-2 py-0.5 font-medium" :class="statusBadgeClass(inv.status)">{{
+                          inv.status
+                        }}</span>
+                      </span>
+                    </li>
+                  </ul>
+                </div>
               </template>
             </div>
           </li>
