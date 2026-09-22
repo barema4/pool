@@ -14,6 +14,7 @@ import * as vendorsApi from '@/api/vendors'
 import * as payoutsApi from '@/api/payouts'
 import * as agencyClientsApi from '@/api/agencyClients'
 import * as personalInvoicesApi from '@/api/personalInvoices'
+import * as billingApi from '@/api/billing'
 import { useOrganizationsStore } from '@/stores/organizations'
 import { extractErrorMessage } from '@/api/client'
 import { statusBadgeClass, formatMoney, formatDate } from '@/lib/format'
@@ -33,6 +34,7 @@ import type {
   ClientOrganization,
   AgencyClientAccessEntry,
   PersonalInvoice,
+  BillingStatus,
 } from '@/types/api'
 
 const route = useRoute()
@@ -98,7 +100,63 @@ async function loadAll() {
 onMounted(() => {
   if (orgsStore.organizations.length === 0) orgsStore.fetchMine()
   loadAll()
+  loadBillingStatus()
+
+  if (route.query.billing === 'success') {
+    billingRedirectMessage.value =
+      'Payment received — activating your Agency plan (this can take a few seconds to reflect below).'
+    selectTab('settings')
+  } else if (route.query.billing === 'cancelled') {
+    billingRedirectMessage.value = 'Checkout cancelled — no changes were made.'
+    selectTab('settings')
+  }
 })
+
+// --- Billing (Agency plan) ---
+const billingStatus = ref<BillingStatus | null>(null)
+const billingRedirectMessage = ref('')
+const billingActionError = ref('')
+const startingCheckout = ref(false)
+const openingPortal = ref(false)
+
+async function loadBillingStatus() {
+  try {
+    billingStatus.value = await billingApi.getStatus(organizationId)
+  } catch (err) {
+    billingActionError.value = extractErrorMessage(err)
+  }
+}
+
+// The free client is always usable, so an org can add exactly one client
+// before this ever blocks anything — see AgencyClientsService in the backend.
+const canAddAnotherClient = computed(() => {
+  if (!billingStatus.value) return true
+  return billingStatus.value.freeClientAvailable || billingStatus.value.hasActivePlan
+})
+
+async function handleUpgrade() {
+  billingActionError.value = ''
+  startingCheckout.value = true
+  try {
+    const { url } = await billingApi.createCheckoutSession(organizationId)
+    window.location.href = url
+  } catch (err) {
+    billingActionError.value = extractErrorMessage(err)
+    startingCheckout.value = false
+  }
+}
+
+async function handleManageBilling() {
+  billingActionError.value = ''
+  openingPortal.value = true
+  try {
+    const { url } = await billingApi.createPortalSession(organizationId)
+    window.location.href = url
+  } catch (err) {
+    billingActionError.value = extractErrorMessage(err)
+    openingPortal.value = false
+  }
+}
 
 // --- Audit log (paginated, lazy-loaded on first tab activation) ---
 const auditLog = ref<AuditLogEntry[]>([])
@@ -867,18 +925,33 @@ function billClientRoute(client: ClientOrganization) {
         <div class="mb-3 flex items-center justify-between">
           <h2 class="text-sm font-semibold tracking-wide text-babyblue-700 uppercase">Clients</h2>
           <button
-            v-if="canInvite"
+            v-if="canInvite && canAddAnotherClient"
             type="button"
             class="rounded-lg border border-babyblue-200 px-3 py-1 text-xs font-medium text-babyblue-700 transition-colors hover:bg-babyblue-100"
             @click="showClientForm = !showClientForm"
           >
             {{ showClientForm ? 'Cancel' : '+ New client' }}
           </button>
+          <button
+            v-else-if="canInvite"
+            type="button"
+            class="rounded-lg bg-babyblue-600 px-3 py-1 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-babyblue-700"
+            @click="selectTab('settings')"
+          >
+            🔒 Upgrade to Agency
+          </button>
         </div>
         <p class="mb-3 text-xs text-slate-500">
           Manage other organizations on their behalf. Creating a client here gives you MAIN_ORGANIZER access to it
           right away — from there, decide which of your own staff can access each client, and at what role.
         </p>
+
+        <div
+          v-if="canInvite && !canAddAnotherClient"
+          class="mb-3 rounded-2xl border border-babyblue-200 bg-babyblue-50 p-4 text-sm text-babyblue-800"
+        >
+          You've used your free client. <button type="button" class="font-semibold underline" @click="selectTab('settings')">Upgrade to the Agency plan</button> to manage more than one.
+        </div>
 
         <form
           v-if="showClientForm"
@@ -1106,6 +1179,46 @@ function billClientRoute(client: ClientOrganization) {
               </button>
             </div>
             <p v-if="brandingError" class="mt-2 text-sm text-red-600">{{ brandingError }}</p>
+          </div>
+        </div>
+
+        <!-- Billing (Agency plan) -->
+        <div v-if="canManage" class="mt-6">
+          <h2 class="mb-3 text-sm font-semibold tracking-wide text-babyblue-700 uppercase">Billing</h2>
+          <div class="rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm">
+            <p v-if="billingRedirectMessage" class="mb-3 rounded-lg bg-babyblue-50 px-3 py-2 text-sm text-babyblue-800">
+              {{ billingRedirectMessage }}
+            </p>
+            <p class="mb-3 text-xs text-slate-500">
+              The first client you manage is free. Upgrade to the Agency plan to manage more than one.
+            </p>
+            <div v-if="billingStatus" class="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p v-if="billingStatus.hasActivePlan" class="text-sm font-medium text-slate-900">
+                  Agency plan active — renews {{ formatDate(billingStatus.agencyPlanExpiresAt!) }}
+                </p>
+                <p v-else class="text-sm font-medium text-slate-900">Free plan — {{ billingStatus.clientCount }} client{{ billingStatus.clientCount === 1 ? '' : 's' }} managed</p>
+              </div>
+              <button
+                v-if="billingStatus.hasActivePlan"
+                type="button"
+                :disabled="openingPortal"
+                class="rounded-lg border border-babyblue-200 px-3 py-2 text-sm font-semibold text-babyblue-700 transition-colors hover:bg-babyblue-100 disabled:cursor-not-allowed disabled:opacity-50"
+                @click="handleManageBilling"
+              >
+                {{ openingPortal ? 'Opening…' : 'Manage billing' }}
+              </button>
+              <button
+                v-else
+                type="button"
+                :disabled="startingCheckout"
+                class="rounded-lg bg-babyblue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-babyblue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                @click="handleUpgrade"
+              >
+                {{ startingCheckout ? 'Redirecting…' : 'Upgrade to Agency' }}
+              </button>
+            </div>
+            <p v-if="billingActionError" class="mt-2 text-sm text-red-600">{{ billingActionError }}</p>
           </div>
         </div>
       </section>

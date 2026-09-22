@@ -95,6 +95,17 @@ export interface AgencyClientAccessEntry {
   user: { id: string; name: string; email: string }
 }
 
+// Agency plan billing status — returned by GET /organizations/:id/billing.
+// The first linked client is always free; agencyPlanExpiresAt gates linking
+// a 2nd+ (see AgencyClientsService.assertCanLinkAnotherClient on the backend).
+export interface BillingStatus {
+  agencyPlanExpiresAt: string | null
+  hasActivePlan: boolean
+  clientCount: number
+  freeClientAvailable: boolean
+  hasBillingAccount: boolean
+}
+
 export interface OrganizationMember {
   id: string
   userId: string
