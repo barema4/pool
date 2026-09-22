@@ -16,7 +16,7 @@ import * as eventReportsApi from '@/api/eventReports'
 import * as invoicesApi from '@/api/invoices'
 import * as transactionsApi from '@/api/transactions'
 import { extractErrorMessage } from '@/api/client'
-import { formatMoney, formatDate, copyToClipboard, statusBadgeClass, currencyForCountry } from '@/lib/format'
+import { formatMoney, formatDate, copyToClipboard, statusBadgeClass } from '@/lib/format'
 import type {
   EventStatus,
   ShareLinks,
@@ -76,9 +76,8 @@ const tabs: { key: Tab; label: string; icon: string }[] = [
 
 const loadError = ref('')
 
-// Both KES (Kenya) and UGX (Uganda) events exist now — always show which one
-// an amount is in rather than a bare number.
-const currency = computed(() => currencyForCountry(store.event?.organization?.country))
+// Always show which currency an amount is in rather than a bare number.
+const currency = computed(() => store.event?.currency)
 function money(value: string | number | null | undefined): string {
   return formatMoney(value, currency.value)
 }
@@ -1121,7 +1120,7 @@ const outlineButtonClass =
           </select>
         </div>
 
-        <div v-if="store.event.organization?.country === 'UGANDA'" class="border-t border-babyblue-100 pt-4 text-sm text-slate-500">
+        <div v-if="store.event.organization?.country === 'UG'" class="border-t border-babyblue-100 pt-4 text-sm text-slate-500">
           Payouts for Uganda events are managed on the organization page — see its mobile money number and
           Withdrawals section.
         </div>

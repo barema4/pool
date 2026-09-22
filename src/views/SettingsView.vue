@@ -2,24 +2,27 @@
 import { ref, computed, onMounted } from 'vue'
 import DashboardLayout from '@/components/layout/DashboardLayout.vue'
 import * as usersApi from '@/api/users'
+import * as publicApi from '@/api/public'
 import { useAuthStore } from '@/stores/auth'
 import { extractErrorMessage } from '@/api/client'
-import type { OrganizationCountry, UserProfile } from '@/types/api'
+import type { UserProfile, SupportedCountry } from '@/types/api'
 
 const auth = useAuthStore()
 
 const name = ref(auth.user?.name ?? '')
 const email = ref(auth.user?.email ?? '')
-const country = ref<OrganizationCountry>('KENYA')
+const country = ref('KE')
 const profile = ref<UserProfile | null>(null)
 const profileError = ref('')
 const profileSuccess = ref(false)
 const savingProfile = ref(false)
 
-const countryOptions: { value: OrganizationCountry; label: string }[] = [
-  { value: 'KENYA', label: '🇰🇪 Kenya — card & M-Pesa via Paystack' },
-  { value: 'UGANDA', label: '🇺🇬 Uganda — MTN & Airtel Money via PawaPay' },
-]
+// Sourced from the backend's SUPPORTED_COUNTRIES so this list and the
+// backend never drift.
+const countryOptions = ref<SupportedCountry[]>([])
+publicApi.listSupportedCountries().then((countries) => {
+  countryOptions.value = countries
+})
 // Determines the payment provider for this user's personal invoices — locked
 // server-side once a payout method is configured, so the money always
 // routes through a consistent gateway.
@@ -115,7 +118,7 @@ const primaryButtonClass =
           <div>
             <label class="mb-1 block text-sm font-medium text-slate-700">Country</label>
             <select v-model="country" :disabled="countryLocked" :class="inputClass">
-              <option v-for="opt in countryOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+              <option v-for="opt in countryOptions" :key="opt.code" :value="opt.code">{{ opt.label }}</option>
             </select>
             <p class="mt-1 text-xs text-slate-500">
               Determines the payment provider for your personal invoices.

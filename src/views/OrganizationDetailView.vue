@@ -15,6 +15,7 @@ import * as payoutsApi from '@/api/payouts'
 import * as agencyClientsApi from '@/api/agencyClients'
 import * as personalInvoicesApi from '@/api/personalInvoices'
 import * as billingApi from '@/api/billing'
+import * as publicApi from '@/api/public'
 import { useOrganizationsStore } from '@/stores/organizations'
 import { extractErrorMessage } from '@/api/client'
 import { statusBadgeClass, formatMoney, formatDate } from '@/lib/format'
@@ -22,7 +23,6 @@ import type {
   Organization,
   OrganizationMember,
   OrganizationType,
-  OrganizationCountry,
   EventRecord,
   OrgRole,
   AuditLogEntry,
@@ -35,6 +35,7 @@ import type {
   AgencyClientAccessEntry,
   PersonalInvoice,
   BillingStatus,
+  SupportedCountry,
 } from '@/types/api'
 
 const route = useRoute()
@@ -54,7 +55,7 @@ const tabs = computed<{ key: Tab; label: string; icon: string }[]>(() => [
   { key: 'vendors', label: 'Vendors', icon: '🧾' },
   { key: 'clients', label: 'Clients', icon: '🏢' },
   { key: 'settings', label: 'Settings', icon: '⚙️' },
-  ...(organization.value?.country === 'UGANDA'
+  ...(organization.value?.country === 'UG'
     ? [{ key: 'withdrawals' as const, label: 'Withdrawals', icon: '💸' }]
     : []),
   { key: 'audit', label: 'Audit Log', icon: '📜' },
@@ -85,7 +86,7 @@ async function loadAll() {
     members.value = memberList
     events.value = eventList
 
-    if (org.country === 'UGANDA') {
+    if (org.country === 'UG') {
       const summary = await withdrawalsApi.listForOrganization(organizationId)
       withdrawalBalance.value = summary.balance
       withdrawals.value = summary.withdrawals
@@ -476,10 +477,10 @@ const clientOrgTypes: OrganizationType[] = [
   'EVENT_COMPANY',
   'OTHER',
 ]
-const clientCountryOptions: { value: OrganizationCountry; label: string }[] = [
-  { value: 'KENYA', label: '🇰🇪 Kenya — card & M-Pesa via Paystack' },
-  { value: 'UGANDA', label: '🇺🇬 Uganda — MTN & Airtel Money via PawaPay' },
-]
+const clientCountryOptions = ref<SupportedCountry[]>([])
+publicApi.listSupportedCountries().then((countries) => {
+  clientCountryOptions.value = countries
+})
 
 const clients = ref<ClientOrganization[]>([])
 const clientsLoading = ref(false)
@@ -501,7 +502,7 @@ async function loadClients() {
 const showClientForm = ref(false)
 const clientName = ref('')
 const clientType = ref<OrganizationType>('OTHER')
-const clientCountry = ref<OrganizationCountry>('KENYA')
+const clientCountry = ref<string>('KE')
 const clientFormError = ref('')
 const creatingClient = ref(false)
 
@@ -975,7 +976,7 @@ function billClientRoute(client: ClientOrganization) {
             v-model="clientCountry"
             class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none"
           >
-            <option v-for="opt in clientCountryOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+            <option v-for="opt in clientCountryOptions" :key="opt.code" :value="opt.code">{{ opt.label }}</option>
           </select>
           <p v-if="clientFormError" class="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{{ clientFormError }}</p>
           <button
@@ -1126,7 +1127,7 @@ function billClientRoute(client: ClientOrganization) {
         <div v-if="canManage">
           <h2 class="mb-3 text-sm font-semibold tracking-wide text-babyblue-700 uppercase">Payout</h2>
           <PayoutSettingsCard
-            v-if="organization.country === 'KENYA'"
+            v-if="organization.country === 'KE'"
             :current="organization"
             title="Payout bank account"
             description="Where money from this organization's events lands, unless an event sets its own override."

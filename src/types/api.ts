@@ -15,8 +15,12 @@ export type PaymentMethod = 'card' | 'mobile_money'
 export type TransactionStatus = 'PENDING' | 'SUCCESS' | 'FAILED' | 'REFUNDED'
 export type PersonalInvoiceStatus = 'PENDING' | 'PAID' | 'EXPIRED' | 'CANCELLED'
 
-// Determines which payment provider/currency an organization's events use.
-export type OrganizationCountry = 'KENYA' | 'UGANDA'
+// ISO-3166-1 alpha-2 country code (e.g. "KE", "UG") — determines which
+// payment provider/currency an organization's events use, via the backend's
+// SUPPORTED_COUNTRIES lookup (src/config/supported-countries.ts). Was a
+// closed 'KENYA' | 'UGANDA' union until the worldwide payment-layer
+// redesign; see api/supportedCountries.ts for the current list.
+export type OrganizationCountry = string
 // Uganda mobile money networks, via PawaPay. For a Uganda event this is what
 // the payer picks instead of PaymentMethod (there is no card option).
 export type MobileMoneyProvider = 'MTN_MOMO_UGA' | 'AIRTEL_OAPI_UGA'
@@ -95,6 +99,14 @@ export interface AgencyClientAccessEntry {
   user: { id: string; name: string; email: string }
 }
 
+// Backs the country dropdown on org-creation/quick-collection forms —
+// returned by GET /public/supported-countries, sourced from the backend's
+// SUPPORTED_COUNTRIES so the two never drift.
+export interface SupportedCountry {
+  code: string
+  label: string
+}
+
 // Agency plan billing status — returned by GET /organizations/:id/billing.
 // The first linked client is always free; agencyPlanExpiresAt gates linking
 // a 2nd+ (see AgencyClientsService.assertCanLinkAnotherClient on the backend).
@@ -136,6 +148,10 @@ export interface EventRecord extends PayoutDetails {
   description: string | null
   coverImageUrl: string | null
   targetGoal: string | null
+  // ISO 4217 code, set at creation from the organization's country — see
+  // SUPPORTED_COUNTRIES on the backend. Read this directly instead of
+  // deriving currency from organization.country.
+  currency: string
   isPermanent: boolean
   status: EventStatus
   // Off by default — a simple collection has no line items to fund. Turn on
@@ -260,6 +276,8 @@ export interface Invoice {
   secureToken: string
   amountRequested: string | null
   amountPaid: string
+  // ISO 4217 code, copied from the parent event at creation.
+  currency: string
   status: InvoiceStatus
   expiresAt: string | null
   categoryTag: string | null
@@ -361,6 +379,8 @@ export interface PersonalInvoice {
   description: string | null
   amount: string
   amountPaid: string
+  // ISO 4217 code, copied from the issuing user's country at creation.
+  currency: string
   secureToken: string
   status: PersonalInvoiceStatus
   expiresAt: string | null

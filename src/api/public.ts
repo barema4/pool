@@ -8,10 +8,15 @@ import type {
   OrgRole,
   PaymentMethod,
   MobileMoneyProvider,
+  SupportedCountry,
 } from '@/types/api'
 
 export function getInvoiceByToken(token: string) {
   return publicApiClient.get<PublicInvoiceView>(`/public/invoices/${token}`).then((r) => r.data)
+}
+
+export function listSupportedCountries() {
+  return publicApiClient.get<SupportedCountry[]>('/public/supported-countries').then((r) => r.data)
 }
 
 export function initializeCheckout(

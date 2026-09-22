@@ -7,10 +7,6 @@ export function formatMoney(value: string | number | null | undefined, currency?
   return currency ? `${currency} ${formatted}` : formatted
 }
 
-export function currencyForCountry(country: 'KENYA' | 'UGANDA' | null | undefined): string {
-  return country === 'UGANDA' ? 'UGX' : 'KES'
-}
-
 // Live preview only, for an open-amount link where the payer hasn't chosen
 // an amount yet — the actual charge is always computed authoritatively by
 // the backend. Mirrors calculatePlatformFee in the NestJS backend.

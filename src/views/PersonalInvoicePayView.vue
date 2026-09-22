@@ -3,7 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import * as personalInvoicesApi from '@/api/personalInvoices'
 import { extractErrorMessage } from '@/api/client'
-import { formatMoney, currencyForCountry } from '@/lib/format'
+import { formatMoney } from '@/lib/format'
 import type { PublicPersonalInvoiceView, PaymentMethod, MobileMoneyProvider } from '@/types/api'
 
 const route = useRoute()
@@ -26,8 +26,8 @@ const checkoutPending = ref(false)
 const isClosed = computed(
   () => invoice.value?.status === 'PAID' || invoice.value?.status === 'EXPIRED' || invoice.value?.status === 'CANCELLED',
 )
-const isUganda = computed(() => invoice.value?.issuer.country === 'UGANDA')
-const currency = computed(() => currencyForCountry(invoice.value?.issuer.country))
+const isUganda = computed(() => invoice.value?.issuer.country === 'UG')
+const currency = computed(() => invoice.value?.currency)
 function money(value: string | number | null | undefined): string {
   return formatMoney(value, currency.value)
 }

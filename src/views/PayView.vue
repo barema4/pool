@@ -3,7 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import * as publicApi from '@/api/public'
 import { extractErrorMessage } from '@/api/client'
-import { formatMoney, copyToClipboard, currencyForCountry, calculatePlatformFee } from '@/lib/format'
+import { formatMoney, copyToClipboard, calculatePlatformFee } from '@/lib/format'
 import type { PublicInvoiceView, Invoice, PaymentMethod, MobileMoneyProvider } from '@/types/api'
 
 const route = useRoute()
@@ -32,8 +32,8 @@ const checkoutPending = ref(false)
 const nameLocked = computed(() => !!invoice.value?.contributorName)
 const emailLocked = computed(() => !!invoice.value?.contributorEmail)
 const phoneLocked = computed(() => !!invoice.value?.contributorPhone)
-const isUganda = computed(() => invoice.value?.event.organization?.country === 'UGANDA')
-const currency = computed(() => currencyForCountry(invoice.value?.event.organization?.country))
+const isUganda = computed(() => invoice.value?.event.organization?.country === 'UG')
+const currency = computed(() => invoice.value?.currency)
 function money(value: string | number | null | undefined): string {
   return formatMoney(value, currency.value)
 }

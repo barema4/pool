@@ -5,29 +5,33 @@ import DashboardLayout from '@/components/layout/DashboardLayout.vue'
 import ShareLinkReady from '@/components/ShareLinkReady.vue'
 import { useOrganizationsStore } from '@/stores/organizations'
 import * as eventsApi from '@/api/events'
+import * as publicApi from '@/api/public'
 import { extractErrorMessage } from '@/api/client'
-import type { OrganizationType, OrganizationCountry, EventRecord } from '@/types/api'
+import type { OrganizationType, EventRecord, SupportedCountry } from '@/types/api'
 
 const store = useOrganizationsStore()
 
 const showForm = ref(false)
 const name = ref('')
 const type = ref<OrganizationType>('OTHER')
-const country = ref<OrganizationCountry>('KENYA')
+const country = ref('KE')
 const error = ref('')
 const submitting = ref(false)
 
-const countryOptions: { value: OrganizationCountry; label: string }[] = [
-  { value: 'KENYA', label: '🇰🇪 Kenya — card & M-Pesa via Paystack' },
-  { value: 'UGANDA', label: '🇺🇬 Uganda — MTN & Airtel Money via PawaPay' },
-]
+// Sourced from the backend's SUPPORTED_COUNTRIES so this list and the
+// backend never drift — shared between this form and the quick-collection
+// form below.
+const countryOptions = ref<SupportedCountry[]>([])
+publicApi.listSupportedCountries().then((countries) => {
+  countryOptions.value = countries
+})
 
 // Quick collection — skips organization setup entirely for a solo user.
 // Still needs a country pick, since that determines the payment provider for
 // the personal org it reuses/creates behind the scenes.
 const showQuickForm = ref(false)
 const quickTitle = ref('')
-const quickCountry = ref<OrganizationCountry>('KENYA')
+const quickCountry = ref('KE')
 const quickError = ref('')
 const quickSubmitting = ref(false)
 const quickResult = ref<EventRecord | null>(null)
@@ -146,7 +150,7 @@ async function handleCreate() {
             v-model="quickCountry"
             class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none"
           >
-            <option v-for="opt in countryOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+            <option v-for="opt in countryOptions" :key="opt.code" :value="opt.code">{{ opt.label }}</option>
           </select>
         </div>
         <p v-if="quickError" class="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{{ quickError }}</p>
@@ -189,7 +193,7 @@ async function handleCreate() {
           v-model="country"
           class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none"
         >
-          <option v-for="opt in countryOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+          <option v-for="opt in countryOptions" :key="opt.code" :value="opt.code">{{ opt.label }}</option>
         </select>
         <p class="mt-1 text-xs text-slate-500">Determines how this organization's events collect and pay out money. Cannot be changed later.</p>
       </div>

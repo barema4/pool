@@ -176,7 +176,7 @@ const outlineButtonClass =
       <!-- Payout -->
       <div class="mb-8">
         <PayoutSettingsCard
-          v-if="profile && profile.country === 'KENYA'"
+          v-if="profile && profile.country === 'KE'"
           :current="profile"
           title="Payout bank account"
           description="This is where money from your invoices lands."

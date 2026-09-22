@@ -5,7 +5,7 @@ import DashboardLayout from '@/components/layout/DashboardLayout.vue'
 import { useEventStore } from '@/stores/event'
 import * as depositsApi from '@/api/deposits'
 import { extractErrorMessage } from '@/api/client'
-import { currencyForCountry, formatMoney } from '@/lib/format'
+import { formatMoney } from '@/lib/format'
 import type { PaymentMethod, MobileMoneyProvider } from '@/types/api'
 
 const route = useRoute()
@@ -23,8 +23,8 @@ const selectedMethod = ref<PaymentMethod | MobileMoneyProvider>('card')
 // depositor's phone instead, so success looks like this screen, not a redirect.
 const depositPending = ref(false)
 
-const isUganda = computed(() => store.event?.organization?.country === 'UGANDA')
-const currency = computed(() => currencyForCountry(store.event?.organization?.country))
+const isUganda = computed(() => store.event?.organization?.country === 'UG')
+const currency = computed(() => store.event?.currency)
 function money(value: string | number | null | undefined): string {
   return formatMoney(value, currency.value)
 }
