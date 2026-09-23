@@ -453,6 +453,13 @@ export interface ReconciliationReport {
     expectedTotal: number
     drift: number
   }
+  // Covers every Stripe-backed country at once — they all share one Stripe
+  // platform balance, same shape as Kenya's approximate report.
+  stripe: {
+    liveBalances: ProviderBalance[]
+    expectedPlatformFees: number
+    caveat: string
+  }
 }
 
 export interface PlatformStaffMember {
