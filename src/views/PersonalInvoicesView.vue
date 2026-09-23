@@ -1,14 +1,17 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import DashboardLayout from '@/components/layout/DashboardLayout.vue'
 import PayoutSettingsCard from '@/components/PayoutSettingsCard.vue'
 import MobileMoneyPayoutCard from '@/components/MobileMoneyPayoutCard.vue'
+import StripeConnectPayoutCard from '@/components/StripeConnectPayoutCard.vue'
 import * as personalInvoicesApi from '@/api/personalInvoices'
 import * as usersApi from '@/api/users'
+import * as stripeConnectApi from '@/api/stripeConnect'
+import * as publicApi from '@/api/public'
 import { extractErrorMessage } from '@/api/client'
 import { formatMoney, formatDate, statusBadgeClass, copyToClipboard } from '@/lib/format'
-import type { PersonalInvoice, ShareLinks, UserProfile } from '@/types/api'
+import type { PersonalInvoice, ShareLinks, UserProfile, SupportedCountry } from '@/types/api'
 
 const route = useRoute()
 
@@ -18,6 +21,14 @@ const loadError = ref('')
 
 const profile = ref<UserProfile | null>(null)
 const payoutError = ref('')
+
+const supportedCountries = ref<SupportedCountry[]>([])
+publicApi.listSupportedCountries().then((countries) => {
+  supportedCountries.value = countries
+})
+const myPaymentProvider = computed(
+  () => supportedCountries.value.find((c) => c.code === profile.value?.country)?.provider,
+)
 
 // Arriving from a client org's "Bill this client" action pre-fills and
 // tags the new invoice with that org — see OrganizationDetailView.vue's
@@ -98,6 +109,20 @@ async function handleSetMobileMoneyPayout(payload: { provider: 'MTN_MOMO_UGA' | 
   }
 }
 
+const connectingStripe = ref(false)
+
+async function handleStripeConnectOnboard() {
+  payoutError.value = ''
+  connectingStripe.value = true
+  try {
+    const { url } = await stripeConnectApi.createUserOnboardingLink()
+    window.location.href = url
+  } catch (err) {
+    payoutError.value = extractErrorMessage(err)
+    connectingStripe.value = false
+  }
+}
+
 async function handleCreate() {
   createError.value = ''
   creating.value = true
@@ -175,21 +200,27 @@ const outlineButtonClass =
     <template v-else>
       <!-- Payout -->
       <div class="mb-8">
+        <StripeConnectPayoutCard
+          v-if="profile && myPaymentProvider === 'STRIPE'"
+          :current="profile"
+          :connecting="connectingStripe"
+          @onboard="handleStripeConnectOnboard"
+        />
         <PayoutSettingsCard
-          v-if="profile && profile.country === 'KE'"
+          v-else-if="profile && myPaymentProvider === 'PAYSTACK'"
           :current="profile"
           title="Payout bank account"
           description="This is where money from your invoices lands."
           @submit="handleSetPayout"
         />
         <MobileMoneyPayoutCard
-          v-else-if="profile"
+          v-else-if="profile && myPaymentProvider === 'PAWAPAY'"
           :current="profile"
           @submit="handleSetMobileMoneyPayout"
         />
         <p v-if="payoutError" class="mt-2 text-sm text-red-600">{{ payoutError }}</p>
         <p
-          v-if="profile && !profile.payoutBankName && !profile.payoutMobileProvider"
+          v-if="profile && !profile.payoutBankName && !profile.payoutMobileProvider && !profile.stripeConnectPayoutsEnabled"
           class="mt-2 text-xs text-amber-600"
         >
           Set this before sending an invoice, or payments will have nowhere to settle.

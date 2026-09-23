@@ -4,6 +4,7 @@ import { RouterLink, useRoute } from 'vue-router'
 import DashboardLayout from '@/components/layout/DashboardLayout.vue'
 import PayoutSettingsCard from '@/components/PayoutSettingsCard.vue'
 import MobileMoneyPayoutCard from '@/components/MobileMoneyPayoutCard.vue'
+import StripeConnectPayoutCard from '@/components/StripeConnectPayoutCard.vue'
 import ShareLinkReady from '@/components/ShareLinkReady.vue'
 import PaginationControls from '@/components/PaginationControls.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
@@ -15,6 +16,7 @@ import * as payoutsApi from '@/api/payouts'
 import * as agencyClientsApi from '@/api/agencyClients'
 import * as personalInvoicesApi from '@/api/personalInvoices'
 import * as billingApi from '@/api/billing'
+import * as stripeConnectApi from '@/api/stripeConnect'
 import * as publicApi from '@/api/public'
 import { useOrganizationsStore } from '@/stores/organizations'
 import { extractErrorMessage } from '@/api/client'
@@ -354,6 +356,20 @@ async function handleSetMobileMoneyPayout(payload: { provider: 'MTN_MOMO_UGA' | 
   }
 }
 
+const connectingStripe = ref(false)
+
+async function handleStripeConnectOnboard() {
+  payoutError.value = ''
+  connectingStripe.value = true
+  try {
+    const { url } = await stripeConnectApi.createOrgOnboardingLink(organizationId)
+    window.location.href = url
+  } catch (err) {
+    payoutError.value = extractErrorMessage(err)
+    connectingStripe.value = false
+  }
+}
+
 // Branding (shown instead of the platform's own badge on public checkout pages)
 const logoUrlInput = ref('')
 const savingBranding = ref(false)
@@ -477,10 +493,16 @@ const clientOrgTypes: OrganizationType[] = [
   'EVENT_COMPANY',
   'OTHER',
 ]
-const clientCountryOptions = ref<SupportedCountry[]>([])
+// Doubles as the Clients-tab country dropdown source and the Settings tab's
+// provider lookup (see orgPaymentProvider below), so the frontend never
+// duplicates the backend's country->provider mapping.
+const supportedCountries = ref<SupportedCountry[]>([])
 publicApi.listSupportedCountries().then((countries) => {
-  clientCountryOptions.value = countries
+  supportedCountries.value = countries
 })
+const orgPaymentProvider = computed(
+  () => supportedCountries.value.find((c) => c.code === organization.value?.country)?.provider,
+)
 
 const clients = ref<ClientOrganization[]>([])
 const clientsLoading = ref(false)
@@ -976,7 +998,7 @@ function billClientRoute(client: ClientOrganization) {
             v-model="clientCountry"
             class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none"
           >
-            <option v-for="opt in clientCountryOptions" :key="opt.code" :value="opt.code">{{ opt.label }}</option>
+            <option v-for="opt in supportedCountries" :key="opt.code" :value="opt.code">{{ opt.label }}</option>
           </select>
           <p v-if="clientFormError" class="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{{ clientFormError }}</p>
           <button
@@ -1126,15 +1148,21 @@ function billClientRoute(client: ClientOrganization) {
         <!-- Payout -->
         <div v-if="canManage">
           <h2 class="mb-3 text-sm font-semibold tracking-wide text-babyblue-700 uppercase">Payout</h2>
+          <StripeConnectPayoutCard
+            v-if="orgPaymentProvider === 'STRIPE'"
+            :current="organization"
+            :connecting="connectingStripe"
+            @onboard="handleStripeConnectOnboard"
+          />
           <PayoutSettingsCard
-            v-if="organization.country === 'KE'"
+            v-else-if="orgPaymentProvider === 'PAYSTACK'"
             :current="organization"
             title="Payout bank account"
             description="Where money from this organization's events lands, unless an event sets its own override."
             @submit="handleSetPayout"
           />
           <MobileMoneyPayoutCard
-            v-else
+            v-else-if="orgPaymentProvider === 'PAWAPAY'"
             :current="organization"
             @submit="handleSetMobileMoneyPayout"
           />

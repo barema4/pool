@@ -51,6 +51,11 @@ export interface UserProfile extends AuthUser, PayoutDetails {
   country: OrganizationCountry
   payoutMobileProvider: MobileMoneyProvider | null
   payoutMobileNumberLast4: string | null
+  // Stripe Connect payout destination (STRIPE-provider countries) — the
+  // third payout mechanism alongside the Paystack/PawaPay fields above.
+  // payoutsEnabled only flips once Stripe confirms onboarding completed.
+  stripeConnectAccountId: string | null
+  stripeConnectPayoutsEnabled: boolean
   createdAt: string
 }
 
@@ -72,6 +77,11 @@ export interface Organization extends PayoutDetails {
   // the client, only the last 4 digits (mirrors payoutAccountLast4).
   payoutMobileProvider: MobileMoneyProvider | null
   payoutMobileNumberLast4: string | null
+  // Stripe Connect payout destination (STRIPE-provider countries) — the
+  // third payout mechanism alongside the two above. payoutsEnabled only
+  // flips once Stripe confirms onboarding completed.
+  stripeConnectAccountId: string | null
+  stripeConnectPayoutsEnabled: boolean
   createdAt: string
   // Shown instead of the platform's own badge on public checkout pages.
   logoUrl: string | null
@@ -102,9 +112,15 @@ export interface AgencyClientAccessEntry {
 // Backs the country dropdown on org-creation/quick-collection forms —
 // returned by GET /public/supported-countries, sourced from the backend's
 // SUPPORTED_COUNTRIES so the two never drift.
+export type PaymentProviderName = 'PAYSTACK' | 'PAWAPAY' | 'STRIPE'
+
 export interface SupportedCountry {
   code: string
   label: string
+  // Picks which payout onboarding card to render (Paystack bank form /
+  // PawaPay mobile money form / Stripe Connect button) — see
+  // StripeConnectPayoutCard.vue and its siblings.
+  provider: PaymentProviderName
 }
 
 // Agency plan billing status — returned by GET /organizations/:id/billing.
