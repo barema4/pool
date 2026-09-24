@@ -4,14 +4,18 @@ import { useRoute } from 'vue-router'
 import DashboardLayout from '@/components/layout/DashboardLayout.vue'
 import PayoutSettingsCard from '@/components/PayoutSettingsCard.vue'
 import MobileMoneyPayoutCard from '@/components/MobileMoneyPayoutCard.vue'
-import StripeConnectPayoutCard from '@/components/StripeConnectPayoutCard.vue'
 import * as personalInvoicesApi from '@/api/personalInvoices'
 import * as usersApi from '@/api/users'
-import * as stripeConnectApi from '@/api/stripeConnect'
 import * as publicApi from '@/api/public'
 import { extractErrorMessage } from '@/api/client'
 import { formatMoney, formatDate, statusBadgeClass, copyToClipboard } from '@/lib/format'
-import type { PersonalInvoice, ShareLinks, UserProfile, SupportedCountry } from '@/types/api'
+import type {
+  PersonalInvoice,
+  ShareLinks,
+  UserProfile,
+  SupportedCountry,
+  MobileMoneyProvider,
+} from '@/types/api'
 
 const route = useRoute()
 
@@ -28,6 +32,9 @@ publicApi.listSupportedCountries().then((countries) => {
 })
 const myPaymentProvider = computed(
   () => supportedCountries.value.find((c) => c.code === profile.value?.country)?.provider,
+)
+const myMobileMoneyOperators = computed(
+  () => supportedCountries.value.find((c) => c.code === profile.value?.country)?.mobileMoneyOperators ?? [],
 )
 
 // Arriving from a client org's "Bill this client" action pre-fills and
@@ -100,26 +107,12 @@ async function handleSetPayout(payload: { bankCode: string; bankName: string; ac
   }
 }
 
-async function handleSetMobileMoneyPayout(payload: { provider: 'MTN_MOMO_UGA' | 'AIRTEL_OAPI_UGA'; phoneNumber: string }) {
+async function handleSetMobileMoneyPayout(payload: { provider: MobileMoneyProvider; phoneNumber: string }) {
   payoutError.value = ''
   try {
     profile.value = await usersApi.setMobileMoneyPayout(payload)
   } catch (err) {
     payoutError.value = extractErrorMessage(err)
-  }
-}
-
-const connectingStripe = ref(false)
-
-async function handleStripeConnectOnboard() {
-  payoutError.value = ''
-  connectingStripe.value = true
-  try {
-    const { url } = await stripeConnectApi.createUserOnboardingLink()
-    window.location.href = url
-  } catch (err) {
-    payoutError.value = extractErrorMessage(err)
-    connectingStripe.value = false
   }
 }
 
@@ -200,14 +193,8 @@ const outlineButtonClass =
     <template v-else>
       <!-- Payout -->
       <div class="mb-8">
-        <StripeConnectPayoutCard
-          v-if="profile && myPaymentProvider === 'STRIPE'"
-          :current="profile"
-          :connecting="connectingStripe"
-          @onboard="handleStripeConnectOnboard"
-        />
         <PayoutSettingsCard
-          v-else-if="profile && myPaymentProvider === 'PAYSTACK'"
+          v-if="profile && myPaymentProvider === 'PAYSTACK'"
           :current="profile"
           title="Payout bank account"
           description="This is where money from your invoices lands."
@@ -216,11 +203,12 @@ const outlineButtonClass =
         <MobileMoneyPayoutCard
           v-else-if="profile && myPaymentProvider === 'PAWAPAY'"
           :current="profile"
+          :operators="myMobileMoneyOperators"
           @submit="handleSetMobileMoneyPayout"
         />
         <p v-if="payoutError" class="mt-2 text-sm text-red-600">{{ payoutError }}</p>
         <p
-          v-if="profile && !profile.payoutBankName && !profile.payoutMobileProvider && !profile.stripeConnectPayoutsEnabled"
+          v-if="profile && !profile.payoutBankName && !profile.payoutMobileProvider"
           class="mt-2 text-xs text-amber-600"
         >
           Set this before sending an invoice, or payments will have nowhere to settle.

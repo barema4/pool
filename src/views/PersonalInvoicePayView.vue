@@ -26,7 +26,8 @@ const checkoutPending = ref(false)
 const isClosed = computed(
   () => invoice.value?.status === 'PAID' || invoice.value?.status === 'EXPIRED' || invoice.value?.status === 'CANCELLED',
 )
-const isUganda = computed(() => invoice.value?.issuer.country === 'UG')
+const isMobileMoneyPush = computed(() => invoice.value?.chargeShape === 'MOBILE_MONEY_PUSH')
+const mobileMoneyOperators = computed(() => invoice.value?.mobileMoneyOperators ?? [])
 const currency = computed(() => invoice.value?.currency)
 function money(value: string | number | null | undefined): string {
   return formatMoney(value, currency.value)
@@ -39,7 +40,8 @@ async function load() {
     if (invoice.value.recipientEmail) payerEmail.value = invoice.value.recipientEmail
     if (invoice.value.recipientName) payerName.value = invoice.value.recipientName
     if (invoice.value.recipientPhone) payerPhone.value = invoice.value.recipientPhone
-    if (isUganda.value) selectedMethod.value = 'MTN_MOMO_UGA'
+    const firstOperator = mobileMoneyOperators.value[0]
+    if (firstOperator) selectedMethod.value = firstOperator.code
   } catch (err) {
     loadError.value = extractErrorMessage(err)
   } finally {
@@ -58,7 +60,7 @@ async function handleSubmit() {
       payerName: payerName.value || undefined,
       payerPhone: payerPhone.value || undefined,
       paymentMethod: selectedMethod.value,
-      phoneNumber: isUganda.value ? payerPhone.value : undefined,
+      phoneNumber: isMobileMoneyPush.value ? payerPhone.value : undefined,
     })
     if (result.status === 'pending') {
       checkoutPending.value = true
@@ -152,35 +154,29 @@ async function handleSubmit() {
 
           <div>
             <label class="mb-1 block text-sm font-medium text-slate-700">
-              {{ isUganda ? 'Phone number (for mobile money)' : 'Phone (optional)' }}
+              {{ isMobileMoneyPush ? 'Phone number (for mobile money)' : 'Phone (optional)' }}
             </label>
             <input
               v-model="payerPhone"
               type="tel"
-              :required="isUganda"
-              :placeholder="isUganda ? '256771234567' : ''"
+              :required="isMobileMoneyPush"
+              :placeholder="isMobileMoneyPush ? 'Include country code' : ''"
               class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none"
             />
           </div>
 
           <p v-if="submitError" class="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{{ submitError }}</p>
 
-          <div v-if="isUganda" class="grid grid-cols-2 gap-2">
+          <div v-if="isMobileMoneyPush" class="grid grid-cols-2 gap-2">
             <button
+              v-for="operator in mobileMoneyOperators"
+              :key="operator.code"
               type="submit"
               :disabled="submitting"
               class="rounded-lg bg-babyblue-600 px-3 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-babyblue-700 disabled:cursor-not-allowed disabled:opacity-50"
-              @click="selectedMethod = 'MTN_MOMO_UGA'"
+              @click="selectedMethod = operator.code"
             >
-              {{ submitting && selectedMethod === 'MTN_MOMO_UGA' ? 'Sending…' : '📱 MTN Mobile Money' }}
-            </button>
-            <button
-              type="submit"
-              :disabled="submitting"
-              class="rounded-lg bg-babyblue-600 px-3 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-babyblue-700 disabled:cursor-not-allowed disabled:opacity-50"
-              @click="selectedMethod = 'AIRTEL_OAPI_UGA'"
-            >
-              {{ submitting && selectedMethod === 'AIRTEL_OAPI_UGA' ? 'Sending…' : '📱 Airtel Money' }}
+              {{ submitting && selectedMethod === operator.code ? 'Sending…' : `📱 ${operator.label}` }}
             </button>
           </div>
           <div v-else class="grid grid-cols-2 gap-2">

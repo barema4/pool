@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import type { Organization, MobileMoneyProvider } from '@/types/api'
+import { ref, computed, onMounted, watch } from 'vue'
+import type { Organization, MobileMoneyOperator, MobileMoneyProvider } from '@/types/api'
 
 const props = withDefaults(
   defineProps<{
     current: Pick<Organization, 'payoutMobileProvider' | 'payoutMobileNumberLast4'>
+    operators: MobileMoneyOperator[]
     autoEditWhenEmpty?: boolean
   }>(),
   { autoEditWhenEmpty: true },
@@ -18,13 +19,24 @@ const emit = defineEmits<{
 }>()
 
 const editing = ref(false)
-const provider = ref<MobileMoneyProvider>('MTN_MOMO_UGA')
+const provider = ref<MobileMoneyProvider>(props.operators[0]?.code ?? '')
 const phoneNumber = ref('')
 
-const providerLabels: Record<MobileMoneyProvider, string> = {
-  MTN_MOMO_UGA: 'MTN Mobile Money',
-  AIRTEL_OAPI_UGA: 'Airtel Money',
-}
+// The country's operator list can arrive after this component mounts (it's
+// fetched from the public supported-countries endpoint) — keep the selected
+// network in sync once it does, rather than leaving it stuck on ''.
+watch(
+  () => props.operators,
+  (operators) => {
+    if (!operators.some((op) => op.code === provider.value)) {
+      provider.value = operators[0]?.code ?? ''
+    }
+  },
+)
+
+const operatorLabels = computed(
+  () => Object.fromEntries(props.operators.map((op) => [op.code, op.label])) as Record<string, string>,
+)
 
 function startEditing() {
   editing.value = true
@@ -48,7 +60,7 @@ const inputClass =
   <section class="rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm">
     <h2 class="mb-1 text-sm font-semibold tracking-wide text-babyblue-700 uppercase">Payout mobile money number</h2>
     <p class="mb-3 text-xs text-slate-500">
-      Where withdrawals land — a PawaPay payout to this MTN or Airtel number, triggered when you withdraw.
+      Where withdrawals land — a PawaPay payout to this mobile money number, triggered when you withdraw.
     </p>
 
     <template v-if="!editing">
@@ -57,7 +69,9 @@ const inputClass =
         class="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-babyblue-50 p-3 text-sm"
       >
         <div class="min-w-0">
-          <p class="truncate font-medium text-slate-900">{{ providerLabels[current.payoutMobileProvider] }}</p>
+          <p class="truncate font-medium text-slate-900">
+            {{ operatorLabels[current.payoutMobileProvider] ?? current.payoutMobileProvider }}
+          </p>
           <p class="text-xs text-slate-500">•••{{ current.payoutMobileNumberLast4 }}</p>
         </div>
         <button
@@ -85,15 +99,16 @@ const inputClass =
         <div>
           <label class="mb-1 block text-xs font-medium text-slate-700">Network</label>
           <select v-model="provider" :class="inputClass">
-            <option value="MTN_MOMO_UGA">MTN Mobile Money</option>
-            <option value="AIRTEL_OAPI_UGA">Airtel Money</option>
+            <option v-for="operator in operators" :key="operator.code" :value="operator.code">
+              {{ operator.label }}
+            </option>
           </select>
         </div>
         <div>
           <label class="mb-1 block text-xs font-medium text-slate-700">Phone number</label>
           <input
             v-model="phoneNumber"
-            placeholder="256771234567"
+            placeholder="Include country code"
             :class="inputClass"
           />
           <p class="mt-1 text-xs text-slate-500">Digits only, with country code, no leading + or 0.</p>

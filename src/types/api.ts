@@ -8,9 +8,11 @@ export type EventStatus = 'DRAFT' | 'ACTIVE' | 'CLOSED' | 'ARCHIVED'
 export type InvoiceStatus = 'PENDING' | 'PARTIALLY_PAID' | 'PAID' | 'EXPIRED'
 export type InvoiceSource = 'ORGANIZER' | 'PUBLIC_PLEDGE'
 export type PaymentRail = 'MOBILE_MONEY' | 'CARD' | 'MANUAL'
-// What the payer picks on our own pay page for a Kenya/Paystack event —
-// passed through so Paystack's hosted checkout skips straight to that
-// channel instead of showing its own picker.
+// What the payer picks on our own pay page for a historical Paystack-era
+// event — passed through so Paystack's hosted checkout skips straight to
+// that channel instead of showing its own picker. No current
+// SUPPORTED_COUNTRIES entry uses this (every country is PawaPay mobile
+// money now); kept for historical Paystack-processed data.
 export type PaymentMethod = 'card' | 'mobile_money'
 export type TransactionStatus = 'PENDING' | 'SUCCESS' | 'FAILED' | 'REFUNDED'
 export type PersonalInvoiceStatus = 'PENDING' | 'PAID' | 'EXPIRED' | 'CANCELLED'
@@ -21,9 +23,20 @@ export type PersonalInvoiceStatus = 'PENDING' | 'PAID' | 'EXPIRED' | 'CANCELLED'
 // closed 'KENYA' | 'UGANDA' union until the worldwide payment-layer
 // redesign; see api/supportedCountries.ts for the current list.
 export type OrganizationCountry = string
-// Uganda mobile money networks, via PawaPay. For a Uganda event this is what
-// the payer picks instead of PaymentMethod (there is no card option).
-export type MobileMoneyProvider = 'MTN_MOMO_UGA' | 'AIRTEL_OAPI_UGA'
+// A PawaPay mobile-network operator code (e.g. "MTN_MOMO_UGA"), via
+// PawaPay — which codes are valid depends on the country, so this is kept as
+// a plain string rather than a fixed union; see MobileMoneyOperator for the
+// {code, label} pairs a specific country actually offers.
+export type MobileMoneyProvider = string
+export interface MobileMoneyOperator {
+  code: MobileMoneyProvider
+  label: string
+}
+// 'REDIRECT': a hosted page (historically Paystack) offering card and/or
+// mobile money together. No current country uses this shape.
+// 'MOBILE_MONEY_PUSH': no hosted page — the payer picks a network from
+// MobileMoneyOperator[] and a prompt is pushed to their phone.
+export type ChargeShape = 'REDIRECT' | 'MOBILE_MONEY_PUSH'
 export type WithdrawalStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED'
 // Platform-operator access (reconciliation, staff management) — distinct
 // from OrgRole, which is scoped per-organization. Null = regular user.
@@ -51,11 +64,6 @@ export interface UserProfile extends AuthUser, PayoutDetails {
   country: OrganizationCountry
   payoutMobileProvider: MobileMoneyProvider | null
   payoutMobileNumberLast4: string | null
-  // Stripe Connect payout destination (STRIPE-provider countries) — the
-  // third payout mechanism alongside the Paystack/PawaPay fields above.
-  // payoutsEnabled only flips once Stripe confirms onboarding completed.
-  stripeConnectAccountId: string | null
-  stripeConnectPayoutsEnabled: boolean
   createdAt: string
 }
 
@@ -77,14 +85,13 @@ export interface Organization extends PayoutDetails {
   // the client, only the last 4 digits (mirrors payoutAccountLast4).
   payoutMobileProvider: MobileMoneyProvider | null
   payoutMobileNumberLast4: string | null
-  // Stripe Connect payout destination (STRIPE-provider countries) — the
-  // third payout mechanism alongside the two above. payoutsEnabled only
-  // flips once Stripe confirms onboarding completed.
-  stripeConnectAccountId: string | null
-  stripeConnectPayoutsEnabled: boolean
   createdAt: string
   // Shown instead of the platform's own badge on public checkout pages.
   logoUrl: string | null
+  // Manual flag a platform staff member flips on for a paying agency — no
+  // self-serve billing exists. Gates linking a 2nd+ client via
+  // AgencyClientLink (the first is always free).
+  hasAgencyPlan: boolean
 }
 
 export interface OrganizationWithRole extends Organization {
@@ -112,26 +119,18 @@ export interface AgencyClientAccessEntry {
 // Backs the country dropdown on org-creation/quick-collection forms —
 // returned by GET /public/supported-countries, sourced from the backend's
 // SUPPORTED_COUNTRIES so the two never drift.
-export type PaymentProviderName = 'PAYSTACK' | 'PAWAPAY' | 'STRIPE'
+export type PaymentProviderName = 'PAYSTACK' | 'PAWAPAY'
 
 export interface SupportedCountry {
   code: string
   label: string
-  // Picks which payout onboarding card to render (Paystack bank form /
-  // PawaPay mobile money form / Stripe Connect button) — see
-  // StripeConnectPayoutCard.vue and its siblings.
+  // Picks which payout onboarding card to render (Paystack bank form,
+  // historical only, vs PawaPay mobile money form) — see
+  // MobileMoneyPayoutCard.vue and PayoutSettingsCard.vue.
   provider: PaymentProviderName
-}
-
-// Agency plan billing status — returned by GET /organizations/:id/billing.
-// The first linked client is always free; agencyPlanExpiresAt gates linking
-// a 2nd+ (see AgencyClientsService.assertCanLinkAnotherClient on the backend).
-export interface BillingStatus {
-  agencyPlanExpiresAt: string | null
-  hasActivePlan: boolean
-  clientCount: number
-  freeClientAvailable: boolean
-  hasBillingAccount: boolean
+  // Which networks a PAWAPAY-provider country's mobile money card should
+  // offer — empty for every other provider.
+  mobileMoneyOperators: MobileMoneyOperator[]
 }
 
 export interface OrganizationMember {
@@ -181,6 +180,8 @@ export interface EventRecord extends PayoutDetails {
 
 export interface EventDetail extends EventRecord {
   organization: { country: OrganizationCountry } | null
+  chargeShape: ChargeShape
+  mobileMoneyOperators: MobileMoneyOperator[]
   // Computed server-side, since the transactions and budget category lists
   // are both paginated and can no longer be summed client-side.
   totalReceived: string
@@ -307,6 +308,8 @@ export interface PublicInvoiceView extends Invoice {
     isPermanent: boolean
     organization: { country: OrganizationCountry; logoUrl: string | null } | null
   }
+  chargeShape: ChargeShape
+  mobileMoneyOperators: MobileMoneyOperator[]
   platformFeePercent: number
   // Only set for a fixed-amount invoice (amountRequested !== null) — an
   // open/permanent link has no amount to precompute a fee against yet, so
@@ -407,6 +410,8 @@ export interface PersonalInvoice {
 
 export interface PublicPersonalInvoiceView extends PersonalInvoice {
   issuer: { id: string; name: string; country: OrganizationCountry }
+  chargeShape: ChargeShape
+  mobileMoneyOperators: MobileMoneyOperator[]
   platformFeePercent: number
   platformFeeAmount: number
   totalChargeAmount: number
@@ -440,26 +445,22 @@ export interface ProviderBalance {
   balance: number
 }
 
+export interface PawaPayCountryReconciliation {
+  countryCode: string
+  label: string
+  currency: string
+  liveBalances: (ProviderBalance & { country: string })[]
+  totalOwedToOrgs: number
+  totalPlatformFees: number
+  expectedTotal: number
+  drift: number
+}
+
 export interface ReconciliationReport {
-  kenya: {
-    liveBalances: ProviderBalance[]
-    expectedPlatformFees: number
-    caveat: string
-  }
-  uganda: {
-    liveBalances: (ProviderBalance & { country: string })[]
-    totalOwedToOrgs: number
-    totalPlatformFees: number
-    expectedTotal: number
-    drift: number
-  }
-  // Covers every Stripe-backed country at once — they all share one Stripe
-  // platform balance, same shape as Kenya's approximate report.
-  stripe: {
-    liveBalances: ProviderBalance[]
-    expectedPlatformFees: number
-    caveat: string
-  }
+  // One exact report per PawaPay-backed country (Kenya, Uganda, and every
+  // other PawaPay market) — each country's mobile-money charges land in
+  // that country's own shared wallet, so this is checked independently.
+  pawapay: PawaPayCountryReconciliation[]
 }
 
 export interface PlatformStaffMember {

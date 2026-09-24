@@ -23,7 +23,8 @@ const selectedMethod = ref<PaymentMethod | MobileMoneyProvider>('card')
 // depositor's phone instead, so success looks like this screen, not a redirect.
 const depositPending = ref(false)
 
-const isUganda = computed(() => store.event?.organization?.country === 'UG')
+const isMobileMoneyPush = computed(() => store.event?.chargeShape === 'MOBILE_MONEY_PUSH')
+const mobileMoneyOperators = computed(() => store.event?.mobileMoneyOperators ?? [])
 const currency = computed(() => store.event?.currency)
 function money(value: string | number | null | undefined): string {
   return formatMoney(value, currency.value)
@@ -32,7 +33,8 @@ function money(value: string | number | null | undefined): string {
 onMounted(async () => {
   try {
     if (!store.event || store.event.id !== eventId) await store.load(eventId)
-    if (isUganda.value) selectedMethod.value = 'MTN_MOMO_UGA'
+    const firstOperator = mobileMoneyOperators.value[0]
+    if (firstOperator) selectedMethod.value = firstOperator.code
   } catch (err) {
     loadError.value = extractErrorMessage(err)
   }
@@ -46,7 +48,7 @@ async function handleDeposit() {
     const result = await depositsApi.initiate(eventId, {
       amount: amount.value,
       paymentMethod: selectedMethod.value,
-      phoneNumber: isUganda.value ? phone.value : undefined,
+      phoneNumber: isMobileMoneyPush.value ? phone.value : undefined,
     })
     if (result.status === 'pending') {
       depositPending.value = true
@@ -104,12 +106,12 @@ async function handleDeposit() {
             />
           </div>
 
-          <div v-if="isUganda">
+          <div v-if="isMobileMoneyPush">
             <label class="mb-1 block text-sm font-medium text-slate-700">Phone number to deduct from</label>
             <input
               v-model="phone"
               type="tel"
-              placeholder="256771234567"
+              placeholder="Include country code"
               required
               class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none"
             />
@@ -117,22 +119,16 @@ async function handleDeposit() {
 
           <p v-if="submitError" class="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{{ submitError }}</p>
 
-          <div v-if="isUganda" class="grid grid-cols-2 gap-2">
+          <div v-if="isMobileMoneyPush" class="grid grid-cols-2 gap-2">
             <button
+              v-for="operator in mobileMoneyOperators"
+              :key="operator.code"
               type="submit"
               :disabled="submitting"
               class="rounded-lg bg-babyblue-600 px-3 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-babyblue-700 disabled:cursor-not-allowed disabled:opacity-50"
-              @click="selectedMethod = 'MTN_MOMO_UGA'"
+              @click="selectedMethod = operator.code"
             >
-              {{ submitting && selectedMethod === 'MTN_MOMO_UGA' ? 'Sending prompt…' : '📱 MTN Mobile Money' }}
-            </button>
-            <button
-              type="submit"
-              :disabled="submitting"
-              class="rounded-lg bg-babyblue-600 px-3 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-babyblue-700 disabled:cursor-not-allowed disabled:opacity-50"
-              @click="selectedMethod = 'AIRTEL_OAPI_UGA'"
-            >
-              {{ submitting && selectedMethod === 'AIRTEL_OAPI_UGA' ? 'Sending prompt…' : '📱 Airtel Money' }}
+              {{ submitting && selectedMethod === operator.code ? 'Sending prompt…' : `📱 ${operator.label}` }}
             </button>
           </div>
           <div v-else class="grid grid-cols-2 gap-2">

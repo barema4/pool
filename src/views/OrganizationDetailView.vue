@@ -1,10 +1,9 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import DashboardLayout from '@/components/layout/DashboardLayout.vue'
 import PayoutSettingsCard from '@/components/PayoutSettingsCard.vue'
 import MobileMoneyPayoutCard from '@/components/MobileMoneyPayoutCard.vue'
-import StripeConnectPayoutCard from '@/components/StripeConnectPayoutCard.vue'
 import ShareLinkReady from '@/components/ShareLinkReady.vue'
 import PaginationControls from '@/components/PaginationControls.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
@@ -15,8 +14,6 @@ import * as vendorsApi from '@/api/vendors'
 import * as payoutsApi from '@/api/payouts'
 import * as agencyClientsApi from '@/api/agencyClients'
 import * as personalInvoicesApi from '@/api/personalInvoices'
-import * as billingApi from '@/api/billing'
-import * as stripeConnectApi from '@/api/stripeConnect'
 import * as publicApi from '@/api/public'
 import { useOrganizationsStore } from '@/stores/organizations'
 import { extractErrorMessage } from '@/api/client'
@@ -36,7 +33,6 @@ import type {
   ClientOrganization,
   AgencyClientAccessEntry,
   PersonalInvoice,
-  BillingStatus,
   SupportedCountry,
 } from '@/types/api'
 
@@ -103,63 +99,16 @@ async function loadAll() {
 onMounted(() => {
   if (orgsStore.organizations.length === 0) orgsStore.fetchMine()
   loadAll()
-  loadBillingStatus()
-
-  if (route.query.billing === 'success') {
-    billingRedirectMessage.value =
-      'Payment received — activating your Agency plan (this can take a few seconds to reflect below).'
-    selectTab('settings')
-  } else if (route.query.billing === 'cancelled') {
-    billingRedirectMessage.value = 'Checkout cancelled — no changes were made.'
-    selectTab('settings')
-  }
 })
 
-// --- Billing (Agency plan) ---
-const billingStatus = ref<BillingStatus | null>(null)
-const billingRedirectMessage = ref('')
-const billingActionError = ref('')
-const startingCheckout = ref(false)
-const openingPortal = ref(false)
-
-async function loadBillingStatus() {
-  try {
-    billingStatus.value = await billingApi.getStatus(organizationId)
-  } catch (err) {
-    billingActionError.value = extractErrorMessage(err)
-  }
-}
-
-// The free client is always usable, so an org can add exactly one client
-// before this ever blocks anything — see AgencyClientsService in the backend.
+// --- Agency plan (manual flag only platform staff can set — no self-serve
+// billing exists). The free client is always usable, so an org can add
+// exactly one client before this ever blocks anything — see
+// AgencyClientsService.assertCanLinkAnotherClient on the backend.
 const canAddAnotherClient = computed(() => {
-  if (!billingStatus.value) return true
-  return billingStatus.value.freeClientAvailable || billingStatus.value.hasActivePlan
+  if (clients.value.length === 0) return true
+  return !!organization.value?.hasAgencyPlan
 })
-
-async function handleUpgrade() {
-  billingActionError.value = ''
-  startingCheckout.value = true
-  try {
-    const { url } = await billingApi.createCheckoutSession(organizationId)
-    window.location.href = url
-  } catch (err) {
-    billingActionError.value = extractErrorMessage(err)
-    startingCheckout.value = false
-  }
-}
-
-async function handleManageBilling() {
-  billingActionError.value = ''
-  openingPortal.value = true
-  try {
-    const { url } = await billingApi.createPortalSession(organizationId)
-    window.location.href = url
-  } catch (err) {
-    billingActionError.value = extractErrorMessage(err)
-    openingPortal.value = false
-  }
-}
 
 // --- Audit log (paginated, lazy-loaded on first tab activation) ---
 const auditLog = ref<AuditLogEntry[]>([])
@@ -236,7 +185,7 @@ const vendorBanks = ref<Bank[]>([])
 const vendorBanksLoading = ref(false)
 const vendorBankCode = ref('')
 const vendorAccountNumber = ref('')
-const vendorMobileProvider = ref<MobileMoneyProvider>('MTN_MOMO_UGA')
+const vendorMobileProvider = ref<MobileMoneyProvider>('')
 const vendorMobileNumber = ref('')
 const vendorError = ref('')
 const creatingVendor = ref(false)
@@ -347,26 +296,12 @@ async function handleSetPayout(payload: { bankCode: string; bankName: string; ac
   }
 }
 
-async function handleSetMobileMoneyPayout(payload: { provider: 'MTN_MOMO_UGA' | 'AIRTEL_OAPI_UGA'; phoneNumber: string }) {
+async function handleSetMobileMoneyPayout(payload: { provider: MobileMoneyProvider; phoneNumber: string }) {
   payoutError.value = ''
   try {
     organization.value = await organizationsApi.setMobileMoneyPayout(organizationId, payload)
   } catch (err) {
     payoutError.value = extractErrorMessage(err)
-  }
-}
-
-const connectingStripe = ref(false)
-
-async function handleStripeConnectOnboard() {
-  payoutError.value = ''
-  connectingStripe.value = true
-  try {
-    const { url } = await stripeConnectApi.createOrgOnboardingLink(organizationId)
-    window.location.href = url
-  } catch (err) {
-    payoutError.value = extractErrorMessage(err)
-    connectingStripe.value = false
   }
 }
 
@@ -503,6 +438,17 @@ publicApi.listSupportedCountries().then((countries) => {
 const orgPaymentProvider = computed(
   () => supportedCountries.value.find((c) => c.code === organization.value?.country)?.provider,
 )
+const orgMobileMoneyOperators = computed(
+  () => supportedCountries.value.find((c) => c.code === organization.value?.country)?.mobileMoneyOperators ?? [],
+)
+const orgOperatorLabels = computed(
+  () => Object.fromEntries(orgMobileMoneyOperators.value.map((op) => [op.code, op.label])) as Record<string, string>,
+)
+watch(orgMobileMoneyOperators, (operators) => {
+  if (!operators.some((op) => op.code === vendorMobileProvider.value)) {
+    vendorMobileProvider.value = operators[0]?.code ?? ''
+  }
+})
 
 const clients = ref<ClientOrganization[]>([])
 const clientsLoading = ref(false)
@@ -879,8 +825,9 @@ function billClientRoute(client: ClientOrganization) {
               v-model="vendorMobileProvider"
               class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none"
             >
-              <option value="MTN_MOMO_UGA">MTN Mobile Money</option>
-              <option value="AIRTEL_OAPI_UGA">Airtel Money</option>
+              <option v-for="operator in orgMobileMoneyOperators" :key="operator.code" :value="operator.code">
+                {{ operator.label }}
+              </option>
             </select>
             <input
               v-model="vendorMobileNumber"
@@ -924,9 +871,10 @@ function billClientRoute(client: ClientOrganization) {
                   >{{ v.payoutBankName }} · {{ v.payoutAccountName }} · •••{{ v.payoutAccountLast4 }}</template
                 >
                 <template v-else
-                  >{{ v.payoutMobileProvider === 'MTN_MOMO_UGA' ? 'MTN Mobile Money' : 'Airtel Money' }} · •••{{
-                    v.payoutMobileNumberLast4
-                  }}</template
+                  >{{
+                    v.payoutMobileProvider ? (orgOperatorLabels[v.payoutMobileProvider] ?? v.payoutMobileProvider) : ''
+                  }}
+                  · •••{{ v.payoutMobileNumberLast4 }}</template
                 >
               </p>
             </div>
@@ -955,14 +903,6 @@ function billClientRoute(client: ClientOrganization) {
           >
             {{ showClientForm ? 'Cancel' : '+ New client' }}
           </button>
-          <button
-            v-else-if="canInvite"
-            type="button"
-            class="rounded-lg bg-babyblue-600 px-3 py-1 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-babyblue-700"
-            @click="selectTab('settings')"
-          >
-            🔒 Upgrade to Agency
-          </button>
         </div>
         <p class="mb-3 text-xs text-slate-500">
           Manage other organizations on their behalf. Creating a client here gives you MAIN_ORGANIZER access to it
@@ -973,7 +913,7 @@ function billClientRoute(client: ClientOrganization) {
           v-if="canInvite && !canAddAnotherClient"
           class="mb-3 rounded-2xl border border-babyblue-200 bg-babyblue-50 p-4 text-sm text-babyblue-800"
         >
-          You've used your free client. <button type="button" class="font-semibold underline" @click="selectTab('settings')">Upgrade to the Agency plan</button> to manage more than one.
+          You've used your free client. Contact us to upgrade to the Agency plan for more.
         </div>
 
         <form
@@ -1148,14 +1088,8 @@ function billClientRoute(client: ClientOrganization) {
         <!-- Payout -->
         <div v-if="canManage">
           <h2 class="mb-3 text-sm font-semibold tracking-wide text-babyblue-700 uppercase">Payout</h2>
-          <StripeConnectPayoutCard
-            v-if="orgPaymentProvider === 'STRIPE'"
-            :current="organization"
-            :connecting="connectingStripe"
-            @onboard="handleStripeConnectOnboard"
-          />
           <PayoutSettingsCard
-            v-else-if="orgPaymentProvider === 'PAYSTACK'"
+            v-if="orgPaymentProvider === 'PAYSTACK'"
             :current="organization"
             title="Payout bank account"
             description="Where money from this organization's events lands, unless an event sets its own override."
@@ -1164,6 +1098,7 @@ function billClientRoute(client: ClientOrganization) {
           <MobileMoneyPayoutCard
             v-else-if="orgPaymentProvider === 'PAWAPAY'"
             :current="organization"
+            :operators="orgMobileMoneyOperators"
             @submit="handleSetMobileMoneyPayout"
           />
           <p v-if="payoutError" class="mt-2 text-sm text-red-600">{{ payoutError }}</p>
@@ -1211,43 +1146,16 @@ function billClientRoute(client: ClientOrganization) {
           </div>
         </div>
 
-        <!-- Billing (Agency plan) -->
+        <!-- Agency plan (manual flag — no self-serve billing) -->
         <div v-if="canManage" class="mt-6">
-          <h2 class="mb-3 text-sm font-semibold tracking-wide text-babyblue-700 uppercase">Billing</h2>
+          <h2 class="mb-3 text-sm font-semibold tracking-wide text-babyblue-700 uppercase">Agency plan</h2>
           <div class="rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm">
-            <p v-if="billingRedirectMessage" class="mb-3 rounded-lg bg-babyblue-50 px-3 py-2 text-sm text-babyblue-800">
-              {{ billingRedirectMessage }}
-            </p>
             <p class="mb-3 text-xs text-slate-500">
-              The first client you manage is free. Upgrade to the Agency plan to manage more than one.
+              The first client you manage is free. Contact us to upgrade to the Agency plan for more.
             </p>
-            <div v-if="billingStatus" class="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p v-if="billingStatus.hasActivePlan" class="text-sm font-medium text-slate-900">
-                  Agency plan active — renews {{ formatDate(billingStatus.agencyPlanExpiresAt!) }}
-                </p>
-                <p v-else class="text-sm font-medium text-slate-900">Free plan — {{ billingStatus.clientCount }} client{{ billingStatus.clientCount === 1 ? '' : 's' }} managed</p>
-              </div>
-              <button
-                v-if="billingStatus.hasActivePlan"
-                type="button"
-                :disabled="openingPortal"
-                class="rounded-lg border border-babyblue-200 px-3 py-2 text-sm font-semibold text-babyblue-700 transition-colors hover:bg-babyblue-100 disabled:cursor-not-allowed disabled:opacity-50"
-                @click="handleManageBilling"
-              >
-                {{ openingPortal ? 'Opening…' : 'Manage billing' }}
-              </button>
-              <button
-                v-else
-                type="button"
-                :disabled="startingCheckout"
-                class="rounded-lg bg-babyblue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-babyblue-700 disabled:cursor-not-allowed disabled:opacity-50"
-                @click="handleUpgrade"
-              >
-                {{ startingCheckout ? 'Redirecting…' : 'Upgrade to Agency' }}
-              </button>
-            </div>
-            <p v-if="billingActionError" class="mt-2 text-sm text-red-600">{{ billingActionError }}</p>
+            <p class="text-sm font-medium text-slate-900">
+              {{ organization?.hasAgencyPlan ? 'Agency plan active' : `Free plan — ${clients.length} client${clients.length === 1 ? '' : 's'} managed` }}
+            </p>
           </div>
         </div>
       </section>
