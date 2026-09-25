@@ -67,6 +67,7 @@ const loadError = ref('')
 const myRole = computed(() => orgsStore.organizations.find((o) => o.id === organizationId)?.role)
 const canManage = computed(() => myRole.value === 'MAIN_ORGANIZER' || myRole.value === 'TREASURER')
 const canInvite = computed(() => myRole.value === 'MAIN_ORGANIZER')
+const isMainOrganizer = computed(() => myRole.value === 'MAIN_ORGANIZER')
 
 async function loadAll() {
   loading.value = true
@@ -285,6 +286,28 @@ async function handleSaveBranding() {
     brandingError.value = extractErrorMessage(err)
   } finally {
     savingBranding.value = false
+  }
+}
+
+// Archive — soft-archive only, never a real delete. Just excludes this
+// organization from the default list on OrganizationsView; everything else
+// (events, payouts, members) keeps working exactly as before.
+const archiving = ref(false)
+const archiveError = ref('')
+const showArchiveConfirm = ref(false)
+
+async function confirmSetArchived() {
+  showArchiveConfirm.value = false
+  archiveError.value = ''
+  archiving.value = true
+  try {
+    const archived = !organization.value?.archivedAt
+    organization.value = await organizationsApi.setArchived(organizationId, archived)
+    await orgsStore.fetchMine()
+  } catch (err) {
+    archiveError.value = extractErrorMessage(err)
+  } finally {
+    archiving.value = false
   }
 }
 
@@ -1088,6 +1111,34 @@ function billClientRoute(client: ClientOrganization) {
             </p>
           </div>
         </div>
+
+        <!-- Archive — soft-archive only, never a real delete -->
+        <div v-if="isMainOrganizer" class="mt-6">
+          <h2 class="mb-3 text-sm font-semibold tracking-wide text-babyblue-700 uppercase">Archive</h2>
+          <div class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm">
+            <div>
+              <p class="text-sm font-medium text-slate-900">
+                {{ organization?.archivedAt ? 'This organization is archived' : 'Archive this organization' }}
+              </p>
+              <p class="text-xs text-slate-500">
+                {{
+                  organization?.archivedAt
+                    ? "Hidden from your organizations list by default. Nothing else is affected — unarchive any time."
+                    : "Hides it from your organizations list. Events, payouts, and history are kept — this isn't a delete."
+                }}
+              </p>
+            </div>
+            <button
+              type="button"
+              :disabled="archiving"
+              class="shrink-0 rounded-lg border border-babyblue-200 px-3 py-2 text-sm font-medium text-babyblue-700 transition-colors hover:bg-babyblue-100 disabled:cursor-not-allowed disabled:opacity-50"
+              @click="showArchiveConfirm = true"
+            >
+              {{ archiving ? 'Saving…' : organization?.archivedAt ? 'Unarchive' : 'Archive' }}
+            </button>
+          </div>
+          <p v-if="archiveError" class="mt-2 text-sm text-red-600">{{ archiveError }}</p>
+        </div>
       </section>
 
       <!-- WITHDRAWALS (Uganda only — PawaPay collects into a shared platform
@@ -1208,6 +1259,19 @@ function billClientRoute(client: ClientOrganization) {
       danger
       @confirm="confirmDeleteVendor"
       @cancel="vendorPendingDelete = null"
+    />
+
+    <ConfirmDialog
+      :open="showArchiveConfirm"
+      :title="organization?.archivedAt ? 'Unarchive this organization?' : 'Archive this organization?'"
+      :message="
+        organization?.archivedAt
+          ? 'It will reappear in your default organizations list.'
+          : 'It will be hidden from your default organizations list. Events, payouts, and history are kept — this is not a delete.'
+      "
+      :confirm-label="organization?.archivedAt ? 'Unarchive' : 'Archive'"
+      @confirm="confirmSetArchived"
+      @cancel="showArchiveConfirm = false"
     />
   </DashboardLayout>
 </template>

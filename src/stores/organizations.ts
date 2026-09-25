@@ -7,10 +7,17 @@ export const useOrganizationsStore = defineStore('organizations', () => {
   const organizations = ref<OrganizationWithRole[]>([])
   const loading = ref(false)
 
+  // Feeds role lookups elsewhere in the app (OrganizationDetailView,
+  // EventDetailView both do `organizations.find(o => o.id === ...)?.role`),
+  // so this always fetches the caller's full set — including archived orgs,
+  // uncapped by the search/pagination the Organizations list page applies to
+  // its own separate fetch. pageSize is the backend's hard max; a user
+  // belonging to more organizations than that is an edge case out of scope.
   async function fetchMine() {
     loading.value = true
     try {
-      organizations.value = await organizationsApi.listMine()
+      const result = await organizationsApi.listMine({ pageSize: 100, includeArchived: true })
+      organizations.value = result.data
     } finally {
       loading.value = false
     }

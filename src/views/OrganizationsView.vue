@@ -1,15 +1,66 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import DashboardLayout from '@/components/layout/DashboardLayout.vue'
 import ShareLinkReady from '@/components/ShareLinkReady.vue'
+import PaginationControls from '@/components/PaginationControls.vue'
 import { useOrganizationsStore } from '@/stores/organizations'
+import * as organizationsApi from '@/api/organizations'
 import * as eventsApi from '@/api/events'
 import * as publicApi from '@/api/public'
 import { extractErrorMessage } from '@/api/client'
-import type { OrganizationType, EventRecord, SupportedCountry } from '@/types/api'
+import type { OrganizationType, EventRecord, SupportedCountry, OrganizationWithRole } from '@/types/api'
 
 const store = useOrganizationsStore()
+
+// The browsable/searchable/paginated list shown on this page — separate
+// from store.organizations, which stays a full unpaginated fetch feeding
+// role lookups elsewhere in the app (see stores/organizations.ts).
+const search = ref('')
+const showArchived = ref(false)
+const page = ref(1)
+const PAGE_SIZE = 10
+const listItems = ref<OrganizationWithRole[]>([])
+const listTotal = ref(0)
+const listTotalPages = ref(1)
+const listLoading = ref(true)
+
+async function loadList() {
+  listLoading.value = true
+  try {
+    const result = await organizationsApi.listMine({
+      page: page.value,
+      pageSize: PAGE_SIZE,
+      search: search.value || undefined,
+      includeArchived: showArchived.value,
+    })
+    listItems.value = result.data
+    listTotal.value = result.total
+    listTotalPages.value = result.totalPages
+  } finally {
+    listLoading.value = false
+  }
+}
+
+function goToPage(next: number) {
+  if (next < 1 || next > listTotalPages.value) return
+  page.value = next
+  loadList()
+}
+
+let searchDebounce: ReturnType<typeof setTimeout> | undefined
+watch(search, () => {
+  clearTimeout(searchDebounce)
+  searchDebounce = setTimeout(() => {
+    page.value = 1
+    loadList()
+  }, 300)
+})
+
+watch(showArchived, () => {
+  page.value = 1
+  loadList()
+})
 
 const showForm = ref(false)
 const name = ref('')
@@ -46,7 +97,7 @@ async function handleQuickCreate() {
     })
     quickTitle.value = ''
     showQuickForm.value = false
-    await store.fetchMine()
+    await Promise.all([store.fetchMine(), loadList()])
   } catch (err) {
     quickError.value = extractErrorMessage(err)
   } finally {
@@ -71,10 +122,13 @@ const orgTypeEmoji: Record<OrganizationType, string> = {
   OTHER: '📁',
 }
 
-const myOrganizations = computed(() => store.organizations.filter((o) => !o.managedViaAgency))
-const managedForClients = computed(() => store.organizations.filter((o) => o.managedViaAgency))
+const myOrganizations = computed(() => listItems.value.filter((o) => !o.managedViaAgency))
+const managedForClients = computed(() => listItems.value.filter((o) => o.managedViaAgency))
 
-onMounted(() => store.fetchMine())
+onMounted(() => {
+  store.fetchMine()
+  loadList()
+})
 
 async function handleCreate() {
   error.value = ''
@@ -83,6 +137,9 @@ async function handleCreate() {
     await store.createOrganization({ name: name.value, type: type.value, country: country.value })
     name.value = ''
     showForm.value = false
+    search.value = ''
+    page.value = 1
+    await loadList()
   } catch (err) {
     error.value = extractErrorMessage(err)
   } finally {
@@ -207,14 +264,29 @@ async function handleCreate() {
       </button>
     </form>
 
-    <div v-if="store.loading" class="text-sm text-slate-500">Loading…</div>
+    <div class="mb-4 flex flex-wrap items-center gap-3">
+      <input
+        v-model="search"
+        type="search"
+        placeholder="Search organizations…"
+        class="w-full max-w-xs rounded-lg border border-babyblue-200 px-3 py-2 text-sm transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none"
+      />
+      <label class="flex items-center gap-2 text-sm text-slate-600">
+        <input v-model="showArchived" type="checkbox" class="rounded border-babyblue-300" />
+        Show archived
+      </label>
+    </div>
+
+    <div v-if="listLoading" class="text-sm text-slate-500">Loading…</div>
     <div
-      v-else-if="store.organizations.length === 0"
+      v-else-if="listItems.length === 0"
       class="rounded-2xl border border-dashed border-babyblue-200 bg-white/60 p-10 text-center"
     >
       <p class="text-3xl">🌱</p>
-      <p class="mt-2 text-sm font-medium text-slate-700">You're not part of any organization yet.</p>
-      <p class="mt-1 text-sm text-slate-500">Create one to start pooling contributions.</p>
+      <p class="mt-2 text-sm font-medium text-slate-700">
+        {{ search ? 'No organizations match your search.' : "You're not part of any organization yet." }}
+      </p>
+      <p v-if="!search" class="mt-1 text-sm text-slate-500">Create one to start pooling contributions.</p>
     </div>
     <template v-else>
       <div v-if="myOrganizations.length > 0" class="mb-6">
@@ -226,6 +298,7 @@ async function handleCreate() {
             <RouterLink
               :to="{ name: 'organization-detail', params: { organizationId: org.id } }"
               class="flex items-center justify-between rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-babyblue-300 hover:shadow-md"
+              :class="{ 'opacity-60': org.archivedAt }"
             >
               <div class="flex min-w-0 items-center gap-3">
                 <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-babyblue-50 text-lg">
@@ -236,9 +309,14 @@ async function handleCreate() {
                   <p class="truncate text-xs text-slate-500">{{ org.type }}</p>
                 </div>
               </div>
-              <span class="ml-2 shrink-0 rounded-full bg-babyblue-100 px-2.5 py-1 text-xs font-medium text-babyblue-700">
-                {{ org.role }}
-              </span>
+              <div class="ml-2 flex shrink-0 items-center gap-2">
+                <span v-if="org.archivedAt" class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-500">
+                  Archived
+                </span>
+                <span class="rounded-full bg-babyblue-100 px-2.5 py-1 text-xs font-medium text-babyblue-700">
+                  {{ org.role }}
+                </span>
+              </div>
             </RouterLink>
           </li>
         </ul>
@@ -251,6 +329,7 @@ async function handleCreate() {
             <RouterLink
               :to="{ name: 'organization-detail', params: { organizationId: org.id } }"
               class="flex items-center justify-between rounded-2xl border border-babyblue-100 bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-babyblue-300 hover:shadow-md"
+              :class="{ 'opacity-60': org.archivedAt }"
             >
               <div class="flex min-w-0 items-center gap-3">
                 <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-babyblue-50 text-lg">
@@ -261,13 +340,27 @@ async function handleCreate() {
                   <p class="truncate text-xs text-slate-500">via {{ org.managedViaAgency?.name }}</p>
                 </div>
               </div>
-              <span class="ml-2 shrink-0 rounded-full bg-babyblue-100 px-2.5 py-1 text-xs font-medium text-babyblue-700">
-                {{ org.role }}
-              </span>
+              <div class="ml-2 flex shrink-0 items-center gap-2">
+                <span v-if="org.archivedAt" class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-500">
+                  Archived
+                </span>
+                <span class="rounded-full bg-babyblue-100 px-2.5 py-1 text-xs font-medium text-babyblue-700">
+                  {{ org.role }}
+                </span>
+              </div>
             </RouterLink>
           </li>
         </ul>
       </div>
+
+      <PaginationControls
+        v-if="listTotalPages > 1"
+        class="mt-4"
+        :page="page"
+        :total-pages="listTotalPages"
+        :total="listTotal"
+        @update:page="goToPage"
+      />
     </template>
   </DashboardLayout>
 </template>

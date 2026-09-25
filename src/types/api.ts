@@ -92,6 +92,9 @@ export interface Organization extends PayoutDetails {
   // self-serve billing exists. Gates linking a 2nd+ client via
   // AgencyClientLink (the first is always free).
   hasAgencyPlan: boolean
+  // Soft-archive only, never a real delete — set via PATCH
+  // /organizations/:id/archive. Excluded from the default org list.
+  archivedAt: string | null
 }
 
 export interface OrganizationWithRole extends Organization {

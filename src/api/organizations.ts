@@ -11,8 +11,15 @@ import type {
   PaginatedResult,
 } from '@/types/api'
 
-export function listMine() {
-  return apiClient.get<OrganizationWithRole[]>('/organizations').then((r) => r.data)
+export function listMine(params?: {
+  page?: number
+  pageSize?: number
+  search?: string
+  includeArchived?: boolean
+}) {
+  return apiClient
+    .get<PaginatedResult<OrganizationWithRole>>('/organizations', { params })
+    .then((r) => r.data)
 }
 
 export function getOne(organizationId: string) {
@@ -73,5 +80,11 @@ export function setMobileMoneyPayout(
 export function setBranding(organizationId: string, payload: { logoUrl: string | null }) {
   return apiClient
     .patch<Organization>(`/organizations/${organizationId}/branding`, payload)
+    .then((r) => r.data)
+}
+
+export function setArchived(organizationId: string, archived: boolean) {
+  return apiClient
+    .patch<Organization>(`/organizations/${organizationId}/archive`, { archived })
     .then((r) => r.data)
 }
