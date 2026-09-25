@@ -11,7 +11,6 @@ import * as organizationsApi from '@/api/organizations'
 import * as eventsApi from '@/api/events'
 import * as withdrawalsApi from '@/api/withdrawals'
 import * as vendorsApi from '@/api/vendors'
-import * as payoutsApi from '@/api/payouts'
 import * as agencyClientsApi from '@/api/agencyClients'
 import * as personalInvoicesApi from '@/api/personalInvoices'
 import * as publicApi from '@/api/public'
@@ -27,8 +26,6 @@ import type {
   AuditLogEntry,
   Withdrawal,
   Vendor,
-  VendorPayoutMethod,
-  Bank,
   MobileMoneyProvider,
   ClientOrganization,
   AgencyClientAccessEntry,
@@ -180,11 +177,6 @@ async function loadVendors() {
 
 const showVendorForm = ref(false)
 const vendorName = ref('')
-const vendorPayoutMethod = ref<VendorPayoutMethod>('BANK_ACCOUNT')
-const vendorBanks = ref<Bank[]>([])
-const vendorBanksLoading = ref(false)
-const vendorBankCode = ref('')
-const vendorAccountNumber = ref('')
 const vendorMobileProvider = ref<MobileMoneyProvider>('')
 const vendorMobileNumber = ref('')
 const vendorError = ref('')
@@ -197,56 +189,23 @@ const vendorDeleteConfirmMessage = computed(() =>
     : '',
 )
 
-async function loadVendorBanks() {
-  if (vendorBanks.value.length > 0) return
-  vendorBanksLoading.value = true
-  try {
-    vendorBanks.value = await payoutsApi.listBanks()
-  } catch (err) {
-    vendorError.value = extractErrorMessage(err)
-  } finally {
-    vendorBanksLoading.value = false
-  }
-}
-
 function toggleVendorForm() {
   showVendorForm.value = !showVendorForm.value
   vendorError.value = ''
-  if (showVendorForm.value && vendorPayoutMethod.value === 'BANK_ACCOUNT') loadVendorBanks()
 }
 
-function vendorBankNameFor(code: string) {
-  return vendorBanks.value.find((b) => b.code === code)?.name ?? ''
-}
-
-// Resolves the account with Paystack for immediate feedback before
-// submitting — the backend independently re-verifies before ever
-// persisting anything, exactly like an organization's own payout account
-// (PayoutSettingsCard.vue does the same "verify then save in one click").
 async function handleCreateVendor() {
   vendorError.value = ''
   creatingVendor.value = true
   try {
-    if (vendorPayoutMethod.value === 'BANK_ACCOUNT') {
-      await payoutsApi.resolveAccount({
-        bankCode: vendorBankCode.value,
-        accountNumber: vendorAccountNumber.value,
-      })
-    }
     await vendorsApi.create({
       organizationId,
       name: vendorName.value,
-      payoutMethod: vendorPayoutMethod.value,
-      bankCode: vendorPayoutMethod.value === 'BANK_ACCOUNT' ? vendorBankCode.value : undefined,
-      bankName:
-        vendorPayoutMethod.value === 'BANK_ACCOUNT' ? vendorBankNameFor(vendorBankCode.value) : undefined,
-      accountNumber: vendorPayoutMethod.value === 'BANK_ACCOUNT' ? vendorAccountNumber.value : undefined,
-      mobileProvider: vendorPayoutMethod.value === 'MOBILE_MONEY' ? vendorMobileProvider.value : undefined,
-      mobileNumber: vendorPayoutMethod.value === 'MOBILE_MONEY' ? vendorMobileNumber.value : undefined,
+      payoutMethod: 'MOBILE_MONEY',
+      mobileProvider: vendorMobileProvider.value,
+      mobileNumber: vendorMobileNumber.value,
     })
     vendorName.value = ''
-    vendorBankCode.value = ''
-    vendorAccountNumber.value = ''
     vendorMobileNumber.value = ''
     showVendorForm.value = false
     await loadVendors()
@@ -794,49 +753,20 @@ function billClientRoute(client: ClientOrganization) {
           />
 
           <select
-            v-model="vendorPayoutMethod"
+            v-model="vendorMobileProvider"
             class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none"
-            @change="vendorPayoutMethod === 'BANK_ACCOUNT' && loadVendorBanks()"
           >
-            <option value="BANK_ACCOUNT">Bank account</option>
-            <option value="MOBILE_MONEY">Mobile money</option>
+            <option v-for="operator in orgMobileMoneyOperators" :key="operator.code" :value="operator.code">
+              {{ operator.label }}
+            </option>
           </select>
-
-          <template v-if="vendorPayoutMethod === 'BANK_ACCOUNT'">
-            <div v-if="vendorBanksLoading" class="text-xs text-slate-400">Loading banks…</div>
-            <select
-              v-else
-              v-model="vendorBankCode"
-              required
-              class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none"
-            >
-              <option value="" disabled>Select bank…</option>
-              <option v-for="b in vendorBanks" :key="b.code" :value="b.code">{{ b.name }}</option>
-            </select>
-            <input
-              v-model="vendorAccountNumber"
-              required
-              placeholder="Account number"
-              class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none"
-            />
-          </template>
-          <template v-else>
-            <select
-              v-model="vendorMobileProvider"
-              class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none"
-            >
-              <option v-for="operator in orgMobileMoneyOperators" :key="operator.code" :value="operator.code">
-                {{ operator.label }}
-              </option>
-            </select>
-            <input
-              v-model="vendorMobileNumber"
-              required
-              placeholder="256771234567"
-              class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none"
-            />
-            <p class="text-xs text-slate-500">Digits only, with country code, no leading + or 0.</p>
-          </template>
+          <input
+            v-model="vendorMobileNumber"
+            required
+            placeholder="Include country code"
+            class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none"
+          />
+          <p class="text-xs text-slate-500">Digits only, with country code, no leading + or 0.</p>
 
           <p v-if="vendorError" class="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{{ vendorError }}</p>
           <button
