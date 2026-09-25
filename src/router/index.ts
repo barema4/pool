@@ -88,6 +88,24 @@ const router = createRouter({
       component: () => import('@/views/AdminStaffView.vue'),
       meta: { requiresAuth: true, requiresPlatformRole: ['OWNER'] },
     },
+    {
+      path: '/admin/organizations',
+      name: 'admin-organizations',
+      component: () => import('@/views/AdminOrganizationsView.vue'),
+      meta: { requiresAuth: true, requiresPlatformRole: ['OWNER', 'STAFF'] },
+    },
+    {
+      path: '/admin/users',
+      name: 'admin-users',
+      component: () => import('@/views/AdminUsersView.vue'),
+      meta: { requiresAuth: true, requiresPlatformRole: ['OWNER', 'STAFF'] },
+    },
+    {
+      path: '/admin/transactions',
+      name: 'admin-transactions',
+      component: () => import('@/views/AdminTransactionsView.vue'),
+      meta: { requiresAuth: true, requiresPlatformRole: ['OWNER', 'STAFF'] },
+    },
 
     {
       path: '/:pathMatch(.*)*',

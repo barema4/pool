@@ -16,6 +16,15 @@ export type PaymentRail = 'MOBILE_MONEY' | 'CARD' | 'MANUAL'
 export type PaymentMethod = 'card' | 'mobile_money'
 export type TransactionStatus = 'PENDING' | 'SUCCESS' | 'FAILED' | 'REFUNDED'
 export type PersonalInvoiceStatus = 'PENDING' | 'PAID' | 'EXPIRED' | 'CANCELLED'
+// Which gateway actually processed a transaction — always PAWAPAY going
+// forward. A pre-cutover row can still carry 'PAYSTACK', but that's not a
+// current option anywhere in the UI (see admin transactions filter).
+export type TransactionGateway = 'PAWAPAY' | 'PAYSTACK'
+export type DisputeStatus =
+  | 'AWAITING_MERCHANT_FEEDBACK'
+  | 'AWAITING_BANK_FEEDBACK'
+  | 'PENDING'
+  | 'RESOLVED'
 
 // ISO-3166-1 alpha-2 country code (e.g. "KE", "UG") — determines which
 // payment provider/currency an organization's events use, via the backend's
@@ -339,6 +348,55 @@ export interface Transaction {
   // dispute doesn't affect amountSettled/status; only a resolution of
   // 'merchant-accepted' (lost) flips the transaction to REFUNDED separately.
   disputes: { status: string; resolution: string | null }[]
+}
+
+// Returned by GET /admin/transactions — the platform-wide equivalent of
+// Transaction, with the event/organization it belongs to attached (an
+// org-scoped Transaction never needs that, since the caller already knows
+// which event/org they're looking at).
+export interface AdminTransaction extends Transaction {
+  gateway: TransactionGateway
+  currency: string
+  platformFeeAmount: string
+  refund: { id: string; status: string } | null
+  event: {
+    id: string
+    title: string
+    organization: { id: string; name: string } | null
+  }
+}
+
+// Returned by GET /admin/disputes.
+export interface AdminDispute {
+  id: string
+  providerReference: string
+  status: DisputeStatus
+  resolution: string | null
+  amount: string
+  reason: string | null
+  createdAt: string
+  resolvedAt: string | null
+  transaction: {
+    id: string
+    event: {
+      id: string
+      title: string
+      organization: { id: string; name: string } | null
+    }
+  } | null
+}
+
+// Returned by GET /admin/users — a support-lookup profile with the
+// organizations this account belongs to attached.
+export interface AdminUser {
+  id: string
+  email: string
+  name: string
+  country: OrganizationCountry
+  platformRole: PlatformRole | null
+  createdAt: string
+  payoutMobileNumberLast4: string | null
+  memberships: { role: OrgRole; organization: { id: string; name: string } }[]
 }
 
 export interface ShareLinks {

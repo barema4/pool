@@ -32,6 +32,27 @@ function handleLogout() {
             Reconciliation
           </RouterLink>
           <RouterLink
+            :to="{ name: 'admin-organizations' }"
+            class="rounded-lg px-3 py-1.5 text-sm font-medium text-slate-600 transition-colors hover:bg-babyblue-100 hover:text-babyblue-700"
+            active-class="bg-babyblue-100 text-babyblue-700"
+          >
+            Organizations
+          </RouterLink>
+          <RouterLink
+            :to="{ name: 'admin-users' }"
+            class="rounded-lg px-3 py-1.5 text-sm font-medium text-slate-600 transition-colors hover:bg-babyblue-100 hover:text-babyblue-700"
+            active-class="bg-babyblue-100 text-babyblue-700"
+          >
+            Users
+          </RouterLink>
+          <RouterLink
+            :to="{ name: 'admin-transactions' }"
+            class="rounded-lg px-3 py-1.5 text-sm font-medium text-slate-600 transition-colors hover:bg-babyblue-100 hover:text-babyblue-700"
+            active-class="bg-babyblue-100 text-babyblue-700"
+          >
+            Transactions
+          </RouterLink>
+          <RouterLink
             v-if="auth.user?.platformRole === 'OWNER'"
             :to="{ name: 'admin-staff' }"
             class="rounded-lg px-3 py-1.5 text-sm font-medium text-slate-600 transition-colors hover:bg-babyblue-100 hover:text-babyblue-700"
