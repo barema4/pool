@@ -6,12 +6,42 @@ import * as publicApi from '@/api/public'
 import { useAuthStore } from '@/stores/auth'
 import { extractErrorMessage } from '@/api/client'
 import AuthBrandPanel from '@/components/AuthBrandPanel.vue'
+import type { SupportedCountry } from '@/types/api'
 
 const name = ref('')
 const email = ref('')
 const password = ref('')
 const error = ref('')
 const loading = ref(false)
+
+const supportedCountries = ref<SupportedCountry[]>([])
+const country = ref('KE')
+const detectingCountry = ref(true)
+
+// Best-effort IP-based pre-fill — never blocks or delays the form, and is
+// always editable, since a payer traveling or on a VPN would otherwise get
+// silently stuck with the wrong country/currency/mobile-money network for
+// their events. Falls back to the default when detection fails, times out,
+// or lands on a country we don't support.
+async function detectCountry() {
+  try {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 3000)
+    const response = await fetch('https://api.bigdatacloud.net/data/reverse-geocode-client', {
+      signal: controller.signal,
+    })
+    clearTimeout(timeout)
+    const data = (await response.json()) as { countryCode?: string }
+    if (data.countryCode && supportedCountries.value.some((c) => c.code === data.countryCode)) {
+      country.value = data.countryCode
+    }
+  } catch {
+    // Network failure, timeout, or ad-blocker — the manually-selectable
+    // dropdown (defaulted to Kenya) is a perfectly fine fallback.
+  } finally {
+    detectingCountry.value = false
+  }
+}
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -23,6 +53,11 @@ const staffInviteToken = (route.query.staffInvite as string) || undefined
 const staffInviteBanner = ref<{ email: string } | null>(null)
 
 onMounted(async () => {
+  publicApi.listSupportedCountries().then((countries) => {
+    supportedCountries.value = countries
+    detectCountry()
+  })
+
   if (inviteToken) {
     try {
       const invitation = await publicApi.getOrganizationInvitation(inviteToken)
@@ -52,6 +87,7 @@ async function handleSubmit() {
       name: name.value,
       email: email.value,
       password: password.value,
+      country: country.value,
       inviteToken,
       staffInviteToken,
     })
@@ -125,6 +161,18 @@ async function handleSubmit() {
               minlength="8"
               class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm text-slate-900 transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none"
             />
+          </div>
+          <div>
+            <label class="mb-1 block text-sm font-medium text-slate-700">Country</label>
+            <select
+              v-model="country"
+              class="w-full rounded-lg border border-babyblue-200 px-3 py-2 text-sm text-slate-900 transition-colors focus:border-babyblue-400 focus:ring-2 focus:ring-babyblue-100 focus:outline-none"
+            >
+              <option v-for="opt in supportedCountries" :key="opt.code" :value="opt.code">{{ opt.label }}</option>
+            </select>
+            <p class="mt-1 text-xs text-slate-500">
+              {{ detectingCountry ? 'Detecting your location…' : "We've guessed this from your location — change it if it's wrong." }}
+            </p>
           </div>
           <p v-if="error" class="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{{ error }}</p>
           <button

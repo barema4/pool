@@ -5,6 +5,7 @@ export function register(payload: {
   email: string
   password: string
   name: string
+  country?: string
   inviteToken?: string
   staffInviteToken?: string
 }) {
