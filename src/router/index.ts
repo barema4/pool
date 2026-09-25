@@ -89,6 +89,12 @@ const router = createRouter({
       meta: { requiresAuth: true, requiresPlatformRole: ['OWNER'] },
     },
     {
+      path: '/admin/platform-payouts',
+      name: 'admin-platform-payouts',
+      component: () => import('@/views/AdminPlatformPayoutsView.vue'),
+      meta: { requiresAuth: true, requiresPlatformRole: ['OWNER'] },
+    },
+    {
       path: '/admin/organizations',
       name: 'admin-organizations',
       component: () => import('@/views/AdminOrganizationsView.vue'),

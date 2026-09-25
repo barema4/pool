@@ -495,6 +495,40 @@ export interface WithdrawalSummary {
   withdrawals: Withdrawal[]
 }
 
+// Where the platform's own accumulated fee revenue for one PawaPay country
+// gets paid out to — see PATCH /admin/platform-payouts/:countryCode/destination.
+export interface PlatformPayoutDestination {
+  countryCode: string
+  payoutMobileProvider: string
+  payoutMobileNumberLast4: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface PlatformPayoutBalance {
+  countryCode: string
+  label: string
+  currency: string
+  // Accumulated platform fees for this country, minus whatever's already
+  // been withdrawn — see PlatformPayoutsService.getBalance on the backend.
+  balance: number
+  destination: PlatformPayoutDestination | null
+}
+
+// The platform's own withdrawal of its fee revenue — same shape as
+// Withdrawal, just scoped by countryCode instead of organizationId.
+export interface PlatformWithdrawal {
+  id: string
+  countryCode: string
+  amount: string
+  status: WithdrawalStatus
+  providerReference: string | null
+  requestedByUserId: string
+  failureReason: string | null
+  createdAt: string
+  completedAt: string | null
+}
+
 export interface ApiErrorBody {
   statusCode: number
   message: string | string[]

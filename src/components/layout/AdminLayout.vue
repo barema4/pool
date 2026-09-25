@@ -61,6 +61,14 @@ function handleLogout() {
             Staff
           </RouterLink>
           <RouterLink
+            v-if="auth.user?.platformRole === 'OWNER'"
+            :to="{ name: 'admin-platform-payouts' }"
+            class="rounded-lg px-3 py-1.5 text-sm font-medium text-slate-600 transition-colors hover:bg-babyblue-100 hover:text-babyblue-700"
+            active-class="bg-babyblue-100 text-babyblue-700"
+          >
+            Platform payouts
+          </RouterLink>
+          <RouterLink
             :to="{ name: 'organizations' }"
             class="rounded-lg px-3 py-1.5 text-sm font-medium text-slate-600 transition-colors hover:bg-babyblue-100 hover:text-babyblue-700"
           >
